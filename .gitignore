@@ -1,0 +1,35 @@
+# Xcode
+Build/
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+xcuserdata/
+
+# macOS
+.DS_Store
+*.swp
+*~
+
+# Swift Package Manager
+.build/
+Packages/
+
+# Misc
+*.ipa
+*.dSYM.zip
+*.dSYM
+test.txt
+
+# Secrets & certificates
+*.env
+*.env.*
+*.pem
+*.p12
+*.key
+*.keystore
+*.mobileprovision
+
+# Claude Code
+.claude/
+build/
+*.dmg
