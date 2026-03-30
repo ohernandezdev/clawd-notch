@@ -526,19 +526,25 @@ enum NotchDisplayState: Equatable {
     case waitingForInput
     case taskCompleted
 
-    /// Hierarchy: .taskCompleted (always shown) > .waitingForInput > .working > .idle
+    /// Shows the state of the most recently updated active session.
+    /// Stale sessions (>5 min) are ignored for notch display.
     static var current: NotchDisplayState {
         let sessions = SessionStore.shared.sessions
-        if sessions.contains(where: { $0.terminalStatus == .taskCompleted }) {
-            return .taskCompleted
+        let staleThreshold = Date().addingTimeInterval(-300) // 5 minutes
+
+        // Find the most recently updated non-idle session that isn't stale
+        let active = sessions
+            .filter { $0.terminalStatus != .idle && $0.lastUpdatedAt > staleThreshold }
+            .sorted { $0.lastUpdatedAt > $1.lastUpdatedAt }
+
+        guard let latest = active.first else { return .idle }
+
+        switch latest.terminalStatus {
+        case .working: return .working
+        case .waitingForInput: return .waitingForInput
+        case .taskCompleted: return .taskCompleted
+        default: return .idle
         }
-        if sessions.contains(where: { $0.terminalStatus == .waitingForInput }) {
-            return .waitingForInput
-        }
-        if sessions.contains(where: { $0.terminalStatus == .working }) {
-            return .working
-        }
-        return .idle
     }
 }
 
@@ -546,7 +552,7 @@ enum NotchDisplayState: Equatable {
 
 struct NotchPillContent: View {
     var isHovering: Bool = false
-    private var displayState: NotchDisplayState { .current }
+    @State private var displayState: NotchDisplayState = .idle
 
     private var allSessions: [TerminalSession] {
         SessionStore.shared.sessions
@@ -568,6 +574,10 @@ struct NotchPillContent: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.clear)
         .offset(y: isHovering ? -3 : -2)
+        .onAppear { displayState = .current }
+        .onReceive(NotificationCenter.default.publisher(for: .NotchyNotchStatusChanged)) { _ in
+            displayState = .current
+        }
         .onChange(of: displayState) {
             NotificationCenter.default.post(name: .NotchyNotchStatusChanged, object: nil)
         }

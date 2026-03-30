@@ -95,6 +95,15 @@ elif tool == 'Glob':
     desc = 'Finding files'
 elif tool == 'Agent':
     desc = ti.get('description', 'Subagent')[:60]
+elif tool == 'WebSearch':
+    desc = 'Searching: ' + ti.get('query', '')[:50]
+elif tool == 'WebFetch':
+    desc = 'Fetching: ' + ti.get('url', '')[:50]
+elif tool in ('TodoRead', 'TodoWrite', 'TaskCreate', 'TaskUpdate'):
+    desc = 'Managing tasks'
+elif tool in ('NotebookRead', 'NotebookEdit'):
+    fp = ti.get('file_path', ti.get('notebook', ''))
+    desc = ('Reading ' if tool == 'NotebookRead' else 'Editing ') + os.path.basename(fp) if fp else tool
 elif tool:
     desc = tool
 

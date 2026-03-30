@@ -1,12 +1,13 @@
 # Claw'd Notch
 
-**Your MacBook notch knows what Claude is doing.**
+**Your MacBook notch knows what your AI coding agent is doing.**
 
-A macOS app that turns your MacBook's notch into a live dashboard for all your Claude Code sessions. See which session needs your attention, which one is running bash, which one just finished — without leaving your current window.
+A macOS app that turns your MacBook's notch into a live dashboard for your AI coding sessions. Supports **Claude Code** and **GitHub Copilot CLI**. See which session needs your attention, which one is running bash, which one just finished — without leaving your current window.
 
 ![macOS](https://img.shields.io/badge/macOS-15.0+-black?logo=apple)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Claude Code](https://img.shields.io/badge/Claude%20Code-hooks-orange)
+![Copilot CLI](https://img.shields.io/badge/Copilot%20CLI-hooks-blue)
 
 <p align="center">
   <img src="assets/demo.gif?v=2" alt="Claw'd Notch demo" width="700">
@@ -80,9 +81,18 @@ The icon persists after the task ends (dimmed in gray) so you always see the las
 | Push Notifications | ON | macOS notifications when Claude needs input or completes a task |
 | Quit Claw'd Notch | — | Exits the app |
 
+## Supported agents
+
+| Agent | Hook System | Config Location |
+|:---|:---|:---|
+| **Claude Code** | [Native hooks](https://docs.anthropic.com/en/docs/claude-code/hooks) | `~/.claude/settings.json` |
+| **GitHub Copilot CLI** | [CLI hooks](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-hooks) | `~/.copilot/hooks/` |
+
+The setup wizard lets you choose which agents to install hooks for. You can enable both.
+
 ## How it works
 
-Uses Claude Code's native [hooks system](https://docs.anthropic.com/en/docs/claude-code/hooks). No Accessibility permissions required, no automation entitlements — just local temp files and native macOS notifications:
+Uses each agent's native hooks system. No Accessibility permissions required, no automation entitlements — just local temp files and native macOS notifications:
 
 ```mermaid
 flowchart LR

@@ -1,12 +1,42 @@
 import SwiftUI
 import ServiceManagement
 
+enum HookProvider: String, CaseIterable, Identifiable {
+    case claudeCode = "Claude Code"
+    case copilotCLI = "GitHub Copilot CLI"
+
+    var id: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .claudeCode: return "terminal"
+        case .copilotCLI: return "chevron.left.forwardslash.chevron.right"
+        }
+    }
+
+    var configPath: String {
+        switch self {
+        case .claudeCode: return "~/.claude/settings.json"
+        case .copilotCLI: return "~/.copilot/hooks/"
+        }
+    }
+
+    var hookPath: String {
+        switch self {
+        case .claudeCode: return "~/.claude/hooks/notchy-status.sh"
+        case .copilotCLI: return "~/.copilot/hooks/notchy-status-copilot.sh"
+        }
+    }
+}
+
 struct SetupView: View {
-    let hookScript: String
-    let settingsPreview: String
-    let onInstall: () -> Void
+    let hookScripts: [HookProvider: String]
+    let settingsPreviews: [HookProvider: String]
+    let onInstall: (Set<HookProvider>) -> Void
     let onCancel: () -> Void
+    @State private var selectedProviders: Set<HookProvider> = Set(HookProvider.allCases)
     @State private var selectedTab = 0
+    @State private var previewProvider: HookProvider = .claudeCode
 
     // Claw'd sprite
     private let sprite: [[Int]] = [
@@ -19,6 +49,10 @@ struct SetupView: View {
         [0,0,1,1,1,1,1,1,1,0,0],
         [0,0,1,0,1,0,1,0,1,0,0],
     ]
+
+    private var activeProviders: [HookProvider] {
+        HookProvider.allCases.filter { selectedProviders.contains($0) }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -49,48 +83,74 @@ struct SetupView: View {
                     .font(.system(size: 20, weight: .bold))
                     .foregroundColor(.white)
 
-                Text("Your MacBook notch knows what Claude is doing.")
+                Text("Your MacBook notch dashboard for AI coding agents.")
                     .font(.system(size: 12))
                     .foregroundColor(.white.opacity(0.5))
             }
             .padding(.top, 24)
             .padding(.bottom, 16)
 
-            // What it does
+            // Provider selection
             VStack(alignment: .leading, spacing: 8) {
-                Text("Setup will:")
+                Text("Install hooks for:")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.white.opacity(0.7))
 
-                SetupStep(icon: "doc.badge.plus", text: "Install hook script to ~/.claude/hooks/")
-                SetupStep(icon: "gearshape", text: "Add hook entries to ~/.claude/settings.json")
-                SetupStep(icon: "arrow.clockwise", text: "Back up your existing settings first")
+                ForEach(HookProvider.allCases) { provider in
+                    ProviderToggleRow(
+                        provider: provider,
+                        isEnabled: selectedProviders.contains(provider),
+                        onToggle: {
+                            if selectedProviders.contains(provider) {
+                                selectedProviders.remove(provider)
+                            } else {
+                                selectedProviders.insert(provider)
+                            }
+                            // Update preview to first active provider
+                            if let first = activeProviders.first {
+                                previewProvider = first
+                            }
+                        }
+                    )
+                }
             }
             .padding(.horizontal, 24)
-            .padding(.bottom, 16)
+            .padding(.bottom, 12)
 
-            // Inspect tabs
-            VStack(spacing: 0) {
-                HStack(spacing: 0) {
-                    TabButton(title: "Hook Script", isSelected: selectedTab == 0) { selectedTab = 0 }
-                    TabButton(title: "Settings Changes", isSelected: selectedTab == 1) { selectedTab = 1 }
-                }
-                .padding(.horizontal, 24)
-
-                ScrollView {
-                    if selectedTab == 0 {
-                        SyntaxHighlightedCode(code: hookScript, language: .bash)
-                            .padding(12)
-                    } else {
-                        SyntaxHighlightedCode(code: settingsPreview, language: .json)
-                            .padding(12)
+            // Inspect tabs (only if at least one provider selected)
+            if !activeProviders.isEmpty {
+                VStack(spacing: 0) {
+                    HStack(spacing: 0) {
+                        // Provider selector (if multiple)
+                        if activeProviders.count > 1 {
+                            ForEach(activeProviders) { provider in
+                                TabButton(
+                                    title: provider == .claudeCode ? "Claude" : "Copilot",
+                                    isSelected: previewProvider == provider
+                                ) { previewProvider = provider }
+                            }
+                            Spacer().frame(width: 12)
+                        }
+                        TabButton(title: "Hook Script", isSelected: selectedTab == 0) { selectedTab = 0 }
+                        TabButton(title: "Config Changes", isSelected: selectedTab == 1) { selectedTab = 1 }
                     }
+                    .padding(.horizontal, 24)
+
+                    ScrollView {
+                        if selectedTab == 0 {
+                            SyntaxHighlightedCode(code: hookScripts[previewProvider] ?? "", language: .bash)
+                                .padding(12)
+                        } else {
+                            SyntaxHighlightedCode(code: settingsPreviews[previewProvider] ?? "", language: .json)
+                                .padding(12)
+                        }
+                    }
+                    .frame(height: 150)
+                    .background(Color(red: 0.08, green: 0.08, blue: 0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .padding(.horizontal, 24)
+                    .padding(.top, 4)
                 }
-                .frame(height: 180)
-                .background(Color(red: 0.08, green: 0.08, blue: 0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .padding(.horizontal, 24)
-                .padding(.top, 4)
             }
 
             Spacer()
@@ -116,23 +176,61 @@ struct SetupView: View {
                     .background(Color.white.opacity(0.08))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                Button("Install Hooks") { onInstall() }
+                Button("Install Hooks") { onInstall(selectedProviders) }
                     .buttonStyle(.plain)
-                    .foregroundColor(.white)
+                    .foregroundColor(selectedProviders.isEmpty ? .white.opacity(0.3) : .white)
                     .fontWeight(.semibold)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 8)
-                    .background(Color(red: 0.35, green: 0.65, blue: 1.0))
+                    .background(selectedProviders.isEmpty ? Color.white.opacity(0.08) : Color(red: 0.35, green: 0.65, blue: 1.0))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .disabled(selectedProviders.isEmpty)
             }
             .padding(.bottom, 20)
         }
-        .frame(width: 480, height: 540)
+        .frame(width: 480, height: 580)
         .background(
             RoundedRectangle(cornerRadius: 14)
                 .fill(Color(red: 0.12, green: 0.12, blue: 0.14))
         )
         .environment(\.colorScheme, .dark)
+    }
+}
+
+struct ProviderToggleRow: View {
+    let provider: HookProvider
+    let isEnabled: Bool
+    let onToggle: () -> Void
+
+    var body: some View {
+        Button(action: onToggle) {
+            HStack(spacing: 10) {
+                Image(systemName: isEnabled ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 14))
+                    .foregroundColor(isEnabled ? Color(red: 0.35, green: 0.65, blue: 1.0) : .white.opacity(0.3))
+
+                Image(systemName: provider.icon)
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.7))
+                    .frame(width: 16)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(provider.rawValue)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(isEnabled ? 0.9 : 0.4))
+                    Text(provider.configPath)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(.white.opacity(isEnabled ? 0.4 : 0.2))
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(isEnabled ? Color.white.opacity(0.05) : .clear)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -381,13 +479,13 @@ struct SyntaxHighlightedCode: View {
 class SetupWindowController {
     private var window: NSWindow?
 
-    func show(hookScript: String, settingsPreview: String, onInstall: @escaping () -> Void, onCancel: @escaping () -> Void) {
+    func show(hookScripts: [HookProvider: String], settingsPreviews: [HookProvider: String], onInstall: @escaping (Set<HookProvider>) -> Void, onCancel: @escaping () -> Void) {
         let view = NSHostingView(rootView: SetupView(
-            hookScript: hookScript,
-            settingsPreview: settingsPreview,
-            onInstall: { [weak self] in
+            hookScripts: hookScripts,
+            settingsPreviews: settingsPreviews,
+            onInstall: { [weak self] providers in
                 self?.close()
-                onInstall()
+                onInstall(providers)
             },
             onCancel: { [weak self] in
                 self?.close()
@@ -396,7 +494,7 @@ class SetupWindowController {
         ))
 
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 540),
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 580),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: true
