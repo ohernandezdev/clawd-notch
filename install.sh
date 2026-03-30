@@ -38,12 +38,25 @@ if ! command -v xcodebuild &>/dev/null; then
     exit 1
 fi
 
+# Full Xcode is required (not just Command Line Tools)
+if ! xcodebuild -version &>/dev/null; then
+    echo "  ✗ Full Xcode installation required (Command Line Tools alone won't work)."
+    echo "    Install Xcode from the App Store, then run:"
+    echo "    sudo xcode-select -s /Applications/Xcode.app/Contents/Developer"
+    exit 1
+fi
+
 xcodebuild -project "$SCRIPT_DIR/ClawdNotch.xcodeproj" \
     -scheme ClawdNotch \
     -configuration Release \
     -derivedDataPath "$SCRIPT_DIR/build" \
     CODE_SIGN_IDENTITY="-" \
-    -quiet 2>&1 | tail -1
+    -quiet
+
+if [ ! -d "$SCRIPT_DIR/build/Build/Products/Release/$APP_NAME" ]; then
+    echo "  ✗ Build failed — $APP_NAME not found. Check xcodebuild output above."
+    exit 1
+fi
 
 echo "  ✓ Built successfully"
 
