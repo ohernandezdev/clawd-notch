@@ -9,10 +9,10 @@ class HookInstaller {
     private var claudeHookPath: String { claudeHookDir + "/tars-status.sh" }
     private var claudeSettingsPath: String { NSHomeDirectory() + "/.claude/settings.json" }
 
-    // Copilot CLI paths (uses hooks/*.json files, not settings.json)
+    // Copilot CLI: hook script in ~/.copilot/hooks/, config in ~/.copilot/settings.json
     private var copilotHookDir: String { NSHomeDirectory() + "/.copilot/hooks" }
     private var copilotHookPath: String { copilotHookDir + "/tars-status.sh" }
-    private var copilotConfigPath: String { copilotHookDir + "/tars-notch.json" }
+    private var copilotSettingsPath: String { NSHomeDirectory() + "/.copilot/settings.json" }
 
     /// Returns true if any hooks are already configured
     var isConfigured: Bool {
@@ -282,44 +282,57 @@ class HookInstaller {
             return false
         }
 
-        configureCopilotHooks()
+        configureCopilotSettings()
         return true
     }
 
-    private func configureCopilotHooks() {
+    private func configureCopilotSettings() {
+        let fm = FileManager.default
         let hookCmd = "bash ~/.copilot/hooks/tars-status.sh"
-        let hookEntry: [String: Any] = ["type": "command", "bash": hookCmd, "timeoutSec": 3]
+        let copilotDir = NSHomeDirectory() + "/.copilot"
+        try? fm.createDirectory(atPath: copilotDir, withIntermediateDirectories: true)
 
-        var config: [String: Any] = ["version": 1]
-        var hooks: [String: Any] = [:]
+        var settings: [String: Any] = [:]
 
-        if let data = FileManager.default.contents(atPath: copilotConfigPath),
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            config = json
-            hooks = json["hooks"] as? [String: Any] ?? [:]
+        if fm.fileExists(atPath: copilotSettingsPath) {
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
+            let backup = copilotSettingsPath + ".backup." + dateFormatter.string(from: Date())
+            try? fm.copyItem(atPath: copilotSettingsPath, toPath: backup)
+
+            if let data = fm.contents(atPath: copilotSettingsPath),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                settings = json
+            }
         }
 
-        // Copilot uses camelCase event names and "bash"/"timeoutSec" fields
-        let events = [
-            "postToolUse", "notification", "stop",
-            "sessionStart", "sessionEnd",
-            "userPromptSubmitted",
-            "subagentStart", "subagentStop",
-            "errorOccurred"
+        if let hooks = settings["hooks"] as? [String: Any],
+           let postToolUse = hooks["PostToolUse"] as? [[String: Any]],
+           postToolUse.contains(where: { entry in
+               (entry["hooks"] as? [[String: Any]])?.contains(where: { ($0["command"] as? String)?.contains("tars-status.sh") == true }) == true
+           }) {
+            return
+        }
+
+        var hooks = settings["hooks"] as? [String: Any] ?? [:]
+        let hookEntry: [String: Any] = [
+            "matcher": "",
+            "hooks": [["type": "command", "command": hookCmd, "timeout": 5]]
         ]
-        for event in events {
+
+        for event in ["PostToolUse", "Notification", "Stop", "SessionStart", "SessionEnd", "UserPromptSubmit"] {
             var eventHooks = hooks[event] as? [[String: Any]] ?? []
-            if eventHooks.contains(where: { ($0["bash"] as? String)?.contains("tars-status.sh") == true }) {
-                continue
-            }
+            if eventHooks.contains(where: { entry in
+                (entry["hooks"] as? [[String: Any]])?.contains(where: { ($0["command"] as? String)?.contains("tars-status.sh") == true }) == true
+            }) { continue }
             eventHooks.append(hookEntry)
             hooks[event] = eventHooks
         }
 
-        config["hooks"] = hooks
+        settings["hooks"] = hooks
 
-        if let data = try? JSONSerialization.data(withJSONObject: config, options: [.prettyPrinted, .sortedKeys]) {
-            try? data.write(to: URL(fileURLWithPath: copilotConfigPath))
+        if let data = try? JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted, .sortedKeys]) {
+            try? data.write(to: URL(fileURLWithPath: copilotSettingsPath))
         }
     }
 

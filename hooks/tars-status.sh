@@ -39,8 +39,8 @@ if not hook:
         hook = 'UserPromptSubmit'  # works for both UserPromptSubmit and userPromptSubmitted
     elif d.get('message') or d.get('notification_type') or d.get('notificationType'):
         hook = 'Notification'
-    elif d.get('last_assistant_message') or d.get('lastAssistantMessage'):
-        hook = 'Stop'
+    elif d.get('stopReason') or d.get('last_assistant_message') or d.get('lastAssistantMessage'):
+        hook = 'agentStop' if d.get('stopReason') else 'Stop'
     elif d.get('error'):
         hook = 'errorOccurred'
     else:
@@ -97,7 +97,16 @@ if not last_claude_text:
         if txt and isinstance(txt, str):
             lines = [l.strip() for l in txt.split('\n') if l.strip()]
             if lines:
-                last_claude_text = lines[-1][:120]
+                # Take the most informative line (skip short ones)
+                for line in lines:
+                    if len(line) > 10:
+                        last_claude_text = line[:120]
+                        break
+                if not last_claude_text and lines:
+                    last_claude_text = lines[0][:120]
+    # If still empty, use desc (tool description)
+    if not last_claude_text and desc:
+        last_claude_text = desc
 
 # --- Secrets filter ---
 _secret_patterns = [
@@ -215,14 +224,9 @@ if hook == 'SessionStart':
     tool_history = []
 elif hook == 'SessionEnd':
     reason = d.get('reason', d.get('Reason', ''))
-    # Copilot sends SessionEnd when waiting for input, not when actually closing
-    if reason in ('clear', 'resume', 'logout', 'prompt_input_exit', 'other'):
-        status = 'idle'
-        desc = 'Session ended'
-    else:
-        # Likely Copilot "done with turn" — treat as waiting
-        status = 'waitingForInput'
-        desc = prev_data.get('last_message', '') or 'Your turn'
+    # SessionEnd = session truly closed (not just turn done — that's agentStop/Stop)
+    status = 'idle'
+    desc = 'Session ended' + (' (' + reason + ')' if reason else '')
 elif hook == 'Stop':
     lam = d.get('last_assistant_message', d.get('lastAssistantMessage', ''))
     if lam:
@@ -262,6 +266,56 @@ elif hook == 'SubagentStart':
 elif hook == 'SubagentStop':
     status = 'working'
     desc = d.get('agent_type', 'agent') + ' agent finished'
+elif hook == 'agentStop':
+    # Copilot: agent finished its turn — "Your turn"
+    status = 'waitingForInput'
+    stop_reason = d.get('stopReason', '')
+    # Try to read last message from transcript if provided
+    tp = d.get('transcriptPath', '')
+    if tp and os.path.isfile(tp) and not last_claude_text:
+        try:
+            with open(tp, 'rb') as f:
+                f.seek(0, 2)
+                sz = f.tell()
+                f.seek(max(0, sz - 20000))
+                tail = f.read().decode('utf-8', errors='replace')
+            for line in reversed(tail.strip().split('\n')):
+                try:
+                    entry = json.loads(line)
+                    msg = entry.get('message', {})
+                    role = msg.get('role', entry.get('role', ''))
+                    if role == 'assistant':
+                        content = msg.get('content', entry.get('content', []))
+                        if isinstance(content, list):
+                            for part in content:
+                                if isinstance(part, dict) and part.get('type') == 'text':
+                                    t = part['text'].strip()
+                                    if t and len(t) > 5:
+                                        tlines = [l.strip() for l in t.split('\n') if l.strip()]
+                                        if tlines:
+                                            last_claude_text = tlines[-1][:150]
+                                        break
+                        elif isinstance(content, str) and len(content) > 5:
+                            last_claude_text = content.strip().split('\n')[-1][:150]
+                        if last_claude_text:
+                            break
+                except:
+                    continue
+        except:
+            pass
+    if not last_claude_text:
+        last_claude_text = prev_data.get('last_message', '') or 'Your turn'
+    desc = last_claude_text
+    # Write notification
+    notif = {'project': os.path.basename(cwd), 'message': last_claude_text or 'Your turn', 'type': 'waitingForInput', 'timestamp': int(time.time())}
+    notif_path = os.path.join(tars_dir, '_notify_' + sid + '.json')
+    tmpfd2, tmppath2 = tempfile.mkstemp(dir=tars_dir, suffix='.tmp')
+    try:
+        with os.fdopen(tmpfd2, 'w') as f2: json.dump(notif, f2)
+        os.replace(tmppath2, notif_path)
+    except:
+        try: os.unlink(tmppath2)
+        except: pass
 elif hook == 'PermissionRequest':
     status = 'waitingForInput'
     desc = 'Permission: ' + tool
@@ -295,8 +349,8 @@ out = {
     'tool_desc': desc,
     'last_message': last_claude_text or desc,
     'updated_at': int(time.time()),
-    'permission_mode': permission_mode,
-    'agent_type': agent_type,
+    'permission_mode': permission_mode or prev_data.get('permission_mode', ''),
+    'agent_type': agent_type or prev_data.get('agent_type', ''),
     'model': model or prev_data.get('model', ''),
     'active_agents': active_agents,
     'tool_history': tool_history,

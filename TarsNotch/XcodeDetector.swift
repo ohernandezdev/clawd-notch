@@ -133,8 +133,26 @@ class XcodeDetector {
             ))
         }
 
+        // Deduplicate: keep only the most recently updated session per working directory
+        var byPath: [String: XcodeProject] = [:]
+        for project in projects {
+            if let existing = byPath[project.path] {
+                if project.updatedAt > existing.updatedAt {
+                    // Delete the older file
+                    let oldFile = (sessionsDir as NSString).appendingPathComponent(existing.sessionId + ".json")
+                    try? fm.removeItem(atPath: oldFile)
+                    byPath[project.path] = project
+                } else {
+                    let oldFile = (sessionsDir as NSString).appendingPathComponent(project.sessionId + ".json")
+                    try? fm.removeItem(atPath: oldFile)
+                }
+            } else {
+                byPath[project.path] = project
+            }
+        }
+
         // Sort: waitingForInput first, then taskCompleted, working, idle
-        return projects.sorted { a, b in
+        return Array(byPath.values).sorted { a, b in
             let order = ["waitingForInput": 0, "taskCompleted": 1, "working": 2, "interrupted": 3, "idle": 4]
             return (order[a.status] ?? 5) < (order[b.status] ?? 5)
         }
