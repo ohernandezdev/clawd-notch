@@ -46,7 +46,7 @@ echo "    - Add 9 hook events to ~/.claude/settings.json (backup first)"
 fi
 if [ "$INSTALL_COPILOT" = true ]; then
 echo "    - Install hook to ~/.copilot/hooks/tars-status.sh"
-echo "    - Add 9 hook events to ~/.copilot/settings.json (backup first)"
+echo "    - Create ~/.copilot/hooks/tars-notch.json with 8 hook events"
 fi
 echo ""
 read -rp "  Continue? [y/N] " confirm
@@ -171,7 +171,43 @@ PYEOF
 }
 
 [ "$INSTALL_CLAUDE" = true ] && install_hooks "Claude Code" "$HOME/.claude"
-[ "$INSTALL_COPILOT" = true ] && install_hooks "Copilot CLI" "$HOME/.copilot"
+
+if [ "$INSTALL_COPILOT" = true ]; then
+    echo "→ Installing Copilot CLI hooks..."
+    mkdir -p "$HOME/.copilot/hooks"
+    cp "$SCRIPT_DIR/hooks/$HOOK_FILE" "$HOME/.copilot/hooks/$HOOK_FILE"
+    chmod +x "$HOME/.copilot/hooks/$HOOK_FILE"
+    echo "  ✓ Hook installed to ~/.copilot/hooks/$HOOK_FILE"
+
+    COPILOT_CONFIG="$HOME/.copilot/hooks/tars-notch.json"
+    echo "→ Configuring Copilot CLI hooks..."
+    if [ -f "$COPILOT_CONFIG" ] && grep -q "tars-status.sh" "$COPILOT_CONFIG" 2>/dev/null; then
+        echo "  ✓ Hooks already configured"
+    else
+        # Copilot uses camelCase events + "bash"/"timeoutSec" in hooks/*.json
+        python3 << PYEOF
+import json, os
+config_path = "$COPILOT_CONFIG"
+config = {"version": 1, "hooks": {}}
+if os.path.isfile(config_path):
+    try:
+        with open(config_path) as f:
+            config = json.load(f)
+    except: pass
+hooks = config.setdefault("hooks", {})
+hook_entry = {"type": "command", "bash": "bash ~/.copilot/hooks/$HOOK_FILE", "timeoutSec": 3}
+for event in ["postToolUse", "notification", "stop", "sessionStart", "sessionEnd", "userPromptSubmit", "subagentStart", "subagentStop"]:
+    event_hooks = hooks.setdefault(event, [])
+    if not any("tars-status.sh" in str(h.get("bash", "")) for h in event_hooks):
+        event_hooks.append(hook_entry)
+config["hooks"] = hooks
+with open(config_path, "w") as f:
+    json.dump(config, f, indent=2)
+    f.write("\n")
+PYEOF
+        echo "  ✓ Created $COPILOT_CONFIG"
+    fi
+fi
 
 # --- Step 4: Launch ---
 echo ""

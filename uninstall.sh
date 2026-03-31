@@ -88,7 +88,12 @@ PYEOF
 }
 
 remove_hooks "Claude Code" "$HOME/.claude"
-remove_hooks "Copilot CLI" "$HOME/.copilot"
+
+# Copilot CLI uses a separate JSON file, not settings.json
+echo "→ Removing Copilot CLI hooks..."
+rm -f "$HOME/.copilot/hooks/tars-status.sh"
+rm -f "$HOME/.copilot/hooks/tars-notch.json"
+echo "  ✓ Copilot CLI hooks removed"
 
 # --- Step 4: Clean temp files ---
 TARS_DIR="${TMPDIR:-/tmp}/tars-sessions"

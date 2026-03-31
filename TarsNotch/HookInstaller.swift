@@ -9,10 +9,10 @@ class HookInstaller {
     private var claudeHookPath: String { claudeHookDir + "/tars-status.sh" }
     private var claudeSettingsPath: String { NSHomeDirectory() + "/.claude/settings.json" }
 
-    // Copilot CLI paths (same structure as Claude Code — it's a fork)
+    // Copilot CLI paths (uses hooks/*.json files, not settings.json)
     private var copilotHookDir: String { NSHomeDirectory() + "/.copilot/hooks" }
     private var copilotHookPath: String { copilotHookDir + "/tars-status.sh" }
-    private var copilotSettingsPath: String { NSHomeDirectory() + "/.copilot/settings.json" }
+    private var copilotConfigPath: String { copilotHookDir + "/tars-notch.json" }
 
     /// Returns true if any hooks are already configured
     var isConfigured: Bool {
@@ -61,13 +61,12 @@ class HookInstaller {
             """
 
             settingsPreviews[.copilotCLI] = """
-            Hooks added to ~/.copilot/settings.json:
+            Creates ~/.copilot/hooks/tars-notch.json:
 
-            Same hooks as Claude Code (Copilot CLI uses the same format).
-            PostToolUse, Notification, Stop, SessionStart, SessionEnd,
-            UserPromptSubmit, SubagentStart, SubagentStop, PermissionRequest
+            postToolUse, notification, stop, sessionStart, sessionEnd,
+            userPromptSubmit, subagentStart, subagentStop
 
-            Your existing settings will be backed up first.
+            Uses same hook script as Claude Code.
             """
 
             self.setupWindow = SetupWindowController()
@@ -283,77 +282,43 @@ class HookInstaller {
             return false
         }
 
-        configureCopilotSettings()
+        configureCopilotHooks()
         return true
     }
 
-    private func configureCopilotSettings() {
-        let fm = FileManager.default
+    private func configureCopilotHooks() {
         let hookCmd = "bash ~/.copilot/hooks/tars-status.sh"
-        let copilotDir = NSHomeDirectory() + "/.copilot"
-        try? fm.createDirectory(atPath: copilotDir, withIntermediateDirectories: true)
+        let hookEntry: [String: Any] = ["type": "command", "bash": hookCmd, "timeoutSec": 3]
 
-        var settings: [String: Any] = [:]
+        var config: [String: Any] = ["version": 1]
+        var hooks: [String: Any] = [:]
 
-        if fm.fileExists(atPath: copilotSettingsPath) {
-            let dateFormatter = DateFormatter()
-            dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
-            let backup = copilotSettingsPath + ".backup." + dateFormatter.string(from: Date())
-            try? fm.copyItem(atPath: copilotSettingsPath, toPath: backup)
-
-            if let data = fm.contents(atPath: copilotSettingsPath),
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                settings = json
-            }
+        if let data = FileManager.default.contents(atPath: copilotConfigPath),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            config = json
+            hooks = json["hooks"] as? [String: Any] ?? [:]
         }
 
-        // Check if already configured
-        if let hooks = settings["hooks"] as? [String: Any],
-           let postToolUse = hooks["PostToolUse"] as? [[String: Any]],
-           postToolUse.contains(where: { entry in
-               (entry["hooks"] as? [[String: Any]])?.contains(where: { ($0["command"] as? String)?.contains("tars-status.sh") == true }) == true
-           }) {
-            return
-        }
-
-        var hooks = settings["hooks"] as? [String: Any] ?? [:]
-
-        let standardEntry: [String: Any] = [
-            "matcher": "",
-            "hooks": [["type": "command", "command": hookCmd, "timeout": 3]]
+        // Copilot uses camelCase event names and "bash"/"timeoutSec" fields
+        let events = [
+            "postToolUse", "notification", "stop",
+            "sessionStart", "sessionEnd",
+            "userPromptSubmit",
+            "subagentStart", "subagentStop"
         ]
-        let permissionEntry: [String: Any] = [
-            "matcher": "",
-            "hooks": [["type": "command", "command": hookCmd, "timeout": 300]]
-        ]
-
-        let standardEvents = [
-            "PostToolUse", "Notification", "Stop",
-            "SessionStart", "SessionEnd",
-            "UserPromptSubmit",
-            "SubagentStart", "SubagentStop"
-        ]
-        for event in standardEvents {
+        for event in events {
             var eventHooks = hooks[event] as? [[String: Any]] ?? []
-            if eventHooks.contains(where: { entry in
-                (entry["hooks"] as? [[String: Any]])?.contains(where: { ($0["command"] as? String)?.contains("tars-status.sh") == true }) == true
-            }) { continue }
-            eventHooks.append(standardEntry)
+            if eventHooks.contains(where: { ($0["bash"] as? String)?.contains("tars-status.sh") == true }) {
+                continue
+            }
+            eventHooks.append(hookEntry)
             hooks[event] = eventHooks
         }
 
-        var permHooks = hooks["PermissionRequest"] as? [[String: Any]] ?? []
-        if !permHooks.contains(where: { entry in
-            (entry["hooks"] as? [[String: Any]])?.contains(where: { ($0["command"] as? String)?.contains("tars-status.sh") == true }) == true
-        }) {
-            permHooks.append(permissionEntry)
-            hooks["PermissionRequest"] = permHooks
-        }
+        config["hooks"] = hooks
 
-        settings["hooks"] = hooks
-
-        if let data = try? JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted, .sortedKeys]) {
-            try? data.write(to: URL(fileURLWithPath: copilotSettingsPath))
+        if let data = try? JSONSerialization.data(withJSONObject: config, options: [.prettyPrinted, .sortedKeys]) {
+            try? data.write(to: URL(fileURLWithPath: copilotConfigPath))
         }
     }
 
