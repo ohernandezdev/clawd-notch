@@ -9,6 +9,16 @@ except:
 
 d = json.load(sys.stdin)
 
+# === RAW EVENT LOG ===
+log_dir = os.path.join(os.environ.get('TMPDIR', '/tmp'), 'tars-sessions')
+os.makedirs(log_dir, mode=0o700, exist_ok=True)
+log_path = os.path.join(log_dir, '_copilot_raw_events.jsonl')
+try:
+    with open(log_path, 'a') as lf:
+        lf.write(json.dumps({'_ts': time.time(), '_env_hook': os.environ.get('COPILOT_HOOK_EVENT', ''), 'data': d}) + '\n')
+except:
+    pass
+
 sid = d.get('sessionId', d.get('session_id', 'unknown'))
 cwd = d.get('cwd', os.getcwd())
 tool = d.get('toolName', d.get('tool_name', ''))
@@ -16,6 +26,7 @@ reason = d.get('reason', '')
 tool_result = d.get('toolResult', d.get('tool_response', {}))
 tool_args = d.get('toolArgs', d.get('tool_input', {}))
 
+raw_tool_args = d.get('toolArgs', d.get('tool_input', {}))
 if not isinstance(tool_args, dict):
     try:
         tool_args = json.loads(tool_args) if isinstance(tool_args, str) else {}
@@ -28,15 +39,22 @@ if not re.match(r'^[A-Za-z0-9_-]{1,128}$', sid):
     sid = 'invalid'
 sid = os.path.basename(sid)
 
-# Detect hook event
-if d.get('stopReason') or reason:
+# Detect hook event from JSON structure
+has_tool_result = 'toolResult' in d or 'tool_response' in d
+if d.get('stopReason'):
     hook = 'Stop'
+elif d.get('reason'):
+    hook = 'SessionEnd'
+elif d.get('source') == 'new' and d.get('initialPrompt'):
+    hook = 'SessionStart'
 elif d.get('prompt') or d.get('userMessage'):
     hook = 'UserPromptSubmit'
 elif d.get('error'):
     hook = 'errorOccurred'
-elif tool:
+elif tool and has_tool_result:
     hook = 'PostToolUse'
+elif tool and not has_tool_result:
+    hook = 'PreToolUse'
 else:
     hook = 'unknown'
 
@@ -44,13 +62,15 @@ else:
 tool_map = {
     'bash': 'Bash', 'shell': 'Bash', 'read_bash': 'Bash', 'run_command': 'Bash',
     'edit': 'Edit', 'multi_edit': 'MultiEdit', 'str_replace_editor': 'Edit',
+    'apply_patch': 'Edit',
     'write': 'Write', 'create': 'Write', 'create_file': 'Write',
     'view': 'Read', 'read': 'Read', 'read_file': 'Read', 'list_directory': 'Read',
-    'grep': 'Grep', 'search': 'Grep',
+    'grep': 'Grep', 'search': 'Grep', 'rg': 'Grep',
     'glob': 'Glob', 'find_files': 'Glob', 'list_files': 'Glob',
     'agent': 'Agent', 'report_intent': 'Thinking', 'think': 'Thinking',
     'task_complete': 'Done', 'ask_user': 'Ask', 'exit_plan_mode': 'Planning',
     'web_search': 'WebSearch', 'web_fetch': 'WebFetch',
+    'skill': 'Skill',
 }
 mapped_tool = tool_map.get(tool.lower(), tool) if tool else ''
 
@@ -69,11 +89,27 @@ elif tool.lower() in ('write', 'create', 'create_file'):
 elif tool.lower() in ('view', 'read', 'read_file', 'list_directory'):
     fp = ti.get('file_path', ti.get('path', ''))
     desc = 'Reading ' + os.path.basename(fp) if fp else 'Reading'
-elif tool.lower() in ('grep', 'search'):
+elif tool.lower() in ('grep', 'search', 'rg'):
     pat = ti.get('pattern', ti.get('query', ''))
     desc = 'Searching: ' + pat[:50] if pat else 'Searching'
 elif tool.lower() in ('glob', 'find_files', 'list_files'):
-    desc = 'Finding files'
+    pat = ti.get('pattern', '')
+    desc = 'Finding: ' + pat[:50] if pat else 'Finding files'
+elif tool.lower() == 'apply_patch':
+    # toolArgs is a string (patch content), not dict
+    raw_args = d.get('toolArgs', '')
+    if isinstance(raw_args, str):
+        for line in raw_args.split('\n'):
+            if line.startswith('*** Add File:'):
+                desc = 'Creating ' + os.path.basename(line.split(':',1)[1].strip())
+                break
+            elif line.startswith('*** Update File:') or line.startswith('*** Modify File:'):
+                desc = 'Editing ' + os.path.basename(line.split(':',1)[1].strip())
+                break
+        if not desc:
+            desc = 'Applying patch'
+    else:
+        desc = 'Applying patch'
 elif tool.lower() == 'report_intent':
     desc = ti.get('intent', ti.get('summary', ''))[:80] or 'Thinking'
 elif tool.lower() == 'ask_user':
@@ -98,8 +134,26 @@ if not last_message:
 # Status
 status = 'working'
 if hook == 'Stop':
+    # stopReason: "end_turn" = Copilot finished, waiting for user
     status = 'waitingForInput'
+    stop_reason = d.get('stopReason', '')
+    desc = 'Finished (' + stop_reason + ')' if stop_reason else 'Your turn'
+    if not last_message:
+        last_message = desc
+elif hook == 'SessionEnd':
+    # In Copilot CLI, reason:"complete" fires after EVERY turn, not just session close
+    # Treat it as waitingForInput (same as Stop/end_turn)
+    status = 'waitingForInput'
+    desc = 'Your turn'
+    if not last_message:
+        last_message = desc
+elif hook == 'SessionStart':
+    status = 'working'
+    prompt = d.get('initialPrompt', '')
+    desc = 'Starting: ' + prompt[:60] if prompt else 'Session started'
+    last_message = desc
 elif hook == 'UserPromptSubmit':
+    status = 'working'
     prompt = d.get('prompt', d.get('userMessage', ''))
     desc = 'User: ' + prompt[:60] if prompt else 'User sent prompt'
     last_message = desc
@@ -109,8 +163,17 @@ elif hook == 'errorOccurred':
     if isinstance(err, dict): err = err.get('message', str(err))
     desc = 'Error: ' + str(err)[:60]
     last_message = desc
+elif hook == 'PreToolUse':
+    status = 'working'
+    # Don't overwrite last_message for preToolUse, just update tool info
 elif tool.lower() == 'ask_user':
     status = 'waitingForInput'
+elif tool.lower() == 'report_intent':
+    status = 'working'
+    # Keep intent as desc but don't change status
+elif tool.lower() == 'skill':
+    # Skip skill tool — don't update UI for internal skill loading
+    pass
 
 # Secrets filter
 for _pat in [r'(?:sk|pk|api|key|token|secret|password|bearer)[_-]?[A-Za-z0-9]{20,}', r'ghp_[A-Za-z0-9]{36}', r'eyJ[A-Za-z0-9_-]{20,}']:
@@ -129,6 +192,14 @@ try:
     with open(outpath) as f:
         prev_data = json.load(f)
 except: pass
+
+# Skip PreToolUse — postToolUse will handle it with result
+if hook == 'PreToolUse':
+    sys.exit(0)
+
+# Skip skill tool events — internal, not useful for UI
+if tool.lower() == 'skill':
+    sys.exit(0)
 
 # Notification on Stop
 if hook == 'Stop':
