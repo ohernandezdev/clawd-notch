@@ -56,9 +56,8 @@ class TerminalPanel: NSPanel {
     func showPanelCentered(on screen: NSScreen) {
         let screenFrame = screen.frame
         let x = screenFrame.midX - frame.width / 2
-        // Position flush against notch: use visible frame top (accounts for menu bar)
-        let menuBarBottom = screenFrame.maxY - (screenFrame.height - screen.visibleFrame.height - screen.visibleFrame.origin.y)
-        let y = menuBarBottom - frame.height
+        // Just below the menu bar
+        let y = screen.visibleFrame.maxY - frame.height // flush with menu bar bottom
         setFrameOrigin(NSPoint(x: x, y: y))
         makeKeyAndOrderFront(nil)
     }

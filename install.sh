@@ -2,21 +2,23 @@
 set -e
 
 # Tars Notch installer
-# Builds the app, installs the hook, configures Claude Code settings, and launches.
+# Builds the app, installs the hook, configures settings, and launches.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_NAME="TarsNotch.app"
+HOOK_FILE="tars-status.sh"
+EVENTS='["PostToolUse","Notification","Stop","SessionStart","SessionEnd","UserPromptSubmit","SubagentStart","SubagentStop"]'
+PERM_EVENT="PermissionRequest"
 
 echo ""
-echo "  🦀 Tars Notch Installer"
+echo "  Tars Notch Installer"
 echo "  ========================="
 echo ""
 echo "  This installer will:"
 echo "    1. Build the app from source (Xcode)"
 echo "    2. Copy TarsNotch.app to /Applications"
-echo "    3. Install hook scripts for your AI coding agents"
-echo "    4. Configure hooks in settings files"
-echo "    5. Launch the app"
+echo "    3. Install hook script + configure settings"
+echo "    4. Launch the app"
 echo ""
 echo "  Which AI coding agents do you use?"
 echo "    [1] Claude Code only"
@@ -35,6 +37,18 @@ case "$provider_choice" in
 esac
 
 echo ""
+echo "  Will do:"
+echo "    - Build TarsNotch.app from source"
+echo "    - Install to /Applications"
+if [ "$INSTALL_CLAUDE" = true ]; then
+echo "    - Install hook to ~/.claude/hooks/tars-status.sh"
+echo "    - Add 9 hook events to ~/.claude/settings.json (backup first)"
+fi
+if [ "$INSTALL_COPILOT" = true ]; then
+echo "    - Install hook to ~/.copilot/hooks/tars-status.sh"
+echo "    - Add 9 hook events to ~/.copilot/settings.json (backup first)"
+fi
+echo ""
 read -rp "  Continue? [y/N] " confirm
 if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
     echo "  Aborted."
@@ -50,7 +64,6 @@ if ! command -v xcodebuild &>/dev/null; then
     exit 1
 fi
 
-# Full Xcode is required (not just Command Line Tools)
 if ! xcodebuild -version &>/dev/null; then
     echo "  ✗ Full Xcode installation required (Command Line Tools alone won't work)."
     echo "    Install Xcode from the App Store, then run:"
@@ -66,7 +79,7 @@ xcodebuild -project "$SCRIPT_DIR/TarsNotch.xcodeproj" \
     -quiet
 
 if [ ! -d "$SCRIPT_DIR/build/Build/Products/Release/$APP_NAME" ]; then
-    echo "  ✗ Build failed — $APP_NAME not found. Check xcodebuild output above."
+    echo "  ✗ Build failed — $APP_NAME not found."
     exit 1
 fi
 
@@ -74,100 +87,91 @@ echo "  ✓ Built successfully"
 
 # --- Step 2: Install app ---
 echo "→ Installing to /Applications..."
-if [ -d "/Applications/$APP_NAME" ]; then
-    rm -rf "/Applications/$APP_NAME"
-fi
+[ -d "/Applications/$APP_NAME" ] && rm -rf "/Applications/$APP_NAME"
 cp -r "$SCRIPT_DIR/build/Build/Products/Release/$APP_NAME" "/Applications/$APP_NAME"
 echo "  ✓ Installed to /Applications/$APP_NAME"
 
-# --- Step 3: Install hooks ---
+# --- Step 3: Install hooks (safe merge into existing settings) ---
 
-if [ "$INSTALL_CLAUDE" = true ]; then
-    HOOK_SRC="$SCRIPT_DIR/hooks/tars-status.sh"
-    HOOK_DST="$HOME/.claude/hooks/tars-status.sh"
-    SETTINGS="$HOME/.claude/settings.json"
-    HOOK_CMD="bash ~/.claude/hooks/tars-status.sh"
+install_hooks() {
+    local PROVIDER="$1"       # "Claude Code" or "Copilot CLI"
+    local CONFIG_DIR="$2"     # ~/.claude or ~/.copilot
+    local HOOK_DIR="$CONFIG_DIR/hooks"
+    local SETTINGS="$CONFIG_DIR/settings.json"
+    local HOOK_CMD="bash $HOOK_DIR/$HOOK_FILE"
 
-    echo "→ Installing Claude Code hooks..."
-    mkdir -p "$HOME/.claude/hooks"
-    cp "$HOOK_SRC" "$HOOK_DST"
-    chmod +x "$HOOK_DST"
-    echo "  ✓ Hook installed to $HOOK_DST"
+    echo "→ Installing $PROVIDER hooks..."
+    mkdir -p "$HOOK_DIR"
+    cp "$SCRIPT_DIR/hooks/$HOOK_FILE" "$HOOK_DIR/$HOOK_FILE"
+    chmod +x "$HOOK_DIR/$HOOK_FILE"
+    echo "  ✓ Hook installed to $HOOK_DIR/$HOOK_FILE"
 
-    echo "→ Configuring Claude Code settings..."
+    echo "→ Configuring $PROVIDER settings..."
+
+    # Backup existing settings
     if [ -f "$SETTINGS" ]; then
         BACKUP="$SETTINGS.backup.$(date +%Y%m%d_%H%M%S)"
         cp "$SETTINGS" "$BACKUP"
-        echo "  ✓ Backed up settings to $BACKUP"
+        echo "  ✓ Backed up to $BACKUP"
 
         if grep -q "tars-status.sh" "$SETTINGS" 2>/dev/null; then
-            echo "  ✓ Hooks already configured in settings.json"
-        else
-            python3 -c "
-import json
-with open('$SETTINGS') as f:
-    settings = json.load(f)
-hooks = settings.setdefault('hooks', {})
-hook_entry = {'matcher': '', 'hooks': [{'type': 'command', 'command': '$HOOK_CMD', 'timeout': 3}]}
-for event in ['PostToolUse', 'Notification', 'Stop']:
-    event_hooks = hooks.setdefault(event, [])
-    event_hooks.append(hook_entry)
-with open('$SETTINGS', 'w') as f:
-    json.dump(settings, f, indent=2)
-    f.write('\n')
-"
-            echo "  ✓ Hooks added to $SETTINGS"
+            echo "  ✓ Hooks already configured"
+            return
         fi
-    else
-        mkdir -p "$HOME/.claude"
-        python3 -c "
-import json
-hook_entry = {'matcher': '', 'hooks': [{'type': 'command', 'command': '$HOOK_CMD', 'timeout': 3}]}
-settings = {'hooks': {'PostToolUse': [hook_entry], 'Notification': [hook_entry], 'Stop': [hook_entry]}}
-with open('$SETTINGS', 'w') as f:
+    fi
+
+    # Safe merge: read existing JSON, append our hooks, write back
+    python3 << PYEOF
+import json, os
+
+settings_path = "$SETTINGS"
+hook_cmd = "$HOOK_CMD"
+
+# Read existing or create new
+settings = {}
+if os.path.isfile(settings_path):
+    try:
+        with open(settings_path) as f:
+            settings = json.load(f)
+    except:
+        pass
+
+hooks = settings.setdefault('hooks', {})
+
+# Standard events (timeout 3s)
+standard_entry = {'matcher': '', 'hooks': [{'type': 'command', 'command': hook_cmd, 'timeout': 3}]}
+for event in $EVENTS:
+    event_hooks = hooks.setdefault(event, [])
+    # Don't duplicate
+    already = any(
+        any('tars-status.sh' in str(h.get('command', '')) for h in entry.get('hooks', []))
+        for entry in event_hooks if isinstance(entry, dict)
+    )
+    if not already:
+        event_hooks.append(standard_entry)
+
+# PermissionRequest (timeout 300s for user approval)
+perm_entry = {'matcher': '', 'hooks': [{'type': 'command', 'command': hook_cmd, 'timeout': 300}]}
+perm_hooks = hooks.setdefault('$PERM_EVENT', [])
+already_perm = any(
+    any('tars-status.sh' in str(h.get('command', '')) for h in entry.get('hooks', []))
+    for entry in perm_hooks if isinstance(entry, dict)
+)
+if not already_perm:
+    perm_hooks.append(perm_entry)
+
+settings['hooks'] = hooks
+
+with open(settings_path, 'w') as f:
     json.dump(settings, f, indent=2)
     f.write('\n')
-"
-        echo "  ✓ Created $SETTINGS with hooks"
-    fi
-fi
+PYEOF
 
-if [ "$INSTALL_COPILOT" = true ]; then
-    COPILOT_HOOK_SRC="$SCRIPT_DIR/hooks/tars-status-copilot.sh"
-    COPILOT_HOOK_DST="$HOME/.copilot/hooks/tars-status-copilot.sh"
-    COPILOT_CONFIG="$HOME/.copilot/hooks/tars-notch.json"
+    echo "  ✓ Hooks added to $SETTINGS"
+}
 
-    echo "→ Installing Copilot CLI hooks..."
-    mkdir -p "$HOME/.copilot/hooks"
-    cp "$COPILOT_HOOK_SRC" "$COPILOT_HOOK_DST"
-    chmod +x "$COPILOT_HOOK_DST"
-    echo "  ✓ Hook installed to $COPILOT_HOOK_DST"
-
-    echo "→ Configuring Copilot CLI hooks..."
-    if [ -f "$COPILOT_CONFIG" ] && grep -q "tars-status-copilot" "$COPILOT_CONFIG" 2>/dev/null; then
-        echo "  ✓ Hooks already configured in $COPILOT_CONFIG"
-    else
-        python3 -c "
-import json, os
-config_path = '$COPILOT_CONFIG'
-config = {'version': 1, 'hooks': {}}
-if os.path.isfile(config_path):
-    with open(config_path) as f:
-        config = json.load(f)
-hooks = config.setdefault('hooks', {})
-hook_entry = {'type': 'command', 'bash': 'bash ~/.copilot/hooks/tars-status-copilot.sh', 'timeoutSec': 3}
-for event in ['postToolUse', 'sessionEnd']:
-    event_hooks = hooks.setdefault(event, [])
-    if not any('tars-status-copilot' in str(h.get('bash','')) for h in event_hooks):
-        event_hooks.append(hook_entry)
-config['hooks'] = hooks
-with open(config_path, 'w') as f:
-    json.dump(config, f, indent=2)
-    f.write('\n')
-"
-        echo "  ✓ Created $COPILOT_CONFIG"
-    fi
-fi
+[ "$INSTALL_CLAUDE" = true ] && install_hooks "Claude Code" "$HOME/.claude"
+[ "$INSTALL_COPILOT" = true ] && install_hooks "Copilot CLI" "$HOME/.copilot"
 
 # --- Step 4: Launch ---
 echo ""

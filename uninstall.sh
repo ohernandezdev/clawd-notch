@@ -2,15 +2,14 @@
 set -e
 
 echo ""
-echo "  🦀 Tars Notch Uninstaller"
+echo "  Tars Notch Uninstaller"
 echo "  ============================"
 echo ""
 echo "  This will:"
 echo "    1. Quit the app (if running)"
 echo "    2. Remove /Applications/TarsNotch.app"
-echo "    3. Remove ~/.claude/hooks/tars-status.sh"
-echo "    4. Remove hook entries from ~/.claude/settings.json"
-echo "    5. Clean up temp files"
+echo "    3. Remove hooks from Claude Code and Copilot CLI"
+echo "    4. Clean up temp files"
 echo ""
 read -rp "  Continue? [y/N] " confirm
 if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
@@ -36,29 +35,31 @@ else
     echo "→ /Applications/TarsNotch.app not found, skipping"
 fi
 
-# --- Step 3: Remove hook script ---
-HOOK="$HOME/.claude/hooks/tars-status.sh"
-if [ -f "$HOOK" ]; then
-    echo "→ Removing hook script..."
-    rm -f "$HOOK"
-    echo "  ✓ Hook removed"
-else
-    echo "→ Hook script not found, skipping"
-fi
+# --- Step 3: Remove hooks from both providers ---
+remove_hooks() {
+    local PROVIDER="$1"
+    local CONFIG_DIR="$2"
+    local HOOK="$CONFIG_DIR/hooks/tars-status.sh"
+    local SETTINGS="$CONFIG_DIR/settings.json"
 
-# --- Step 4: Remove hooks from settings.json ---
-SETTINGS="$HOME/.claude/settings.json"
-if [ -f "$SETTINGS" ] && grep -q "tars-status.sh" "$SETTINGS" 2>/dev/null; then
-    echo "→ Removing hook entries from settings.json..."
-    # Backup first
-    BACKUP="$SETTINGS.backup.$(date +%Y%m%d_%H%M%S)"
-    cp "$SETTINGS" "$BACKUP"
-    echo "  ✓ Backed up to $BACKUP"
+    echo "→ Removing $PROVIDER hooks..."
 
-    python3 -c "
+    # Remove hook script
+    if [ -f "$HOOK" ]; then
+        rm -f "$HOOK"
+        echo "  ✓ Hook script removed"
+    fi
+
+    # Remove hook entries from settings.json (safe: backup + filter)
+    if [ -f "$SETTINGS" ] && grep -q "tars-status.sh" "$SETTINGS" 2>/dev/null; then
+        BACKUP="$SETTINGS.backup.$(date +%Y%m%d_%H%M%S)"
+        cp "$SETTINGS" "$BACKUP"
+        echo "  ✓ Backed up to $BACKUP"
+
+        python3 << PYEOF
 import json
 
-with open('$SETTINGS') as f:
+with open("$SETTINGS") as f:
     settings = json.load(f)
 
 hooks = settings.get('hooks', {})
@@ -66,7 +67,7 @@ for event in list(hooks.keys()):
     hooks[event] = [
         h for h in hooks[event]
         if not any(
-            'tars-status.sh' in hook.get('command', '')
+            'tars-status.sh' in str(hook.get('command', ''))
             for hook in h.get('hooks', [])
         )
     ]
@@ -74,18 +75,22 @@ for event in list(hooks.keys()):
         del hooks[event]
 
 if not hooks:
-    del settings['hooks']
+    settings.pop('hooks', None)
 
-with open('$SETTINGS', 'w') as f:
+with open("$SETTINGS", 'w') as f:
     json.dump(settings, f, indent=2)
     f.write('\n')
-"
-    echo "  ✓ Hook entries removed from settings.json"
-else
-    echo "→ No hook entries found in settings.json, skipping"
-fi
+PYEOF
+        echo "  ✓ Hook entries removed from settings.json"
+    else
+        echo "  ✓ No hook entries found, skipping"
+    fi
+}
 
-# --- Step 5: Clean temp files ---
+remove_hooks "Claude Code" "$HOME/.claude"
+remove_hooks "Copilot CLI" "$HOME/.copilot"
+
+# --- Step 4: Clean temp files ---
 TARS_DIR="${TMPDIR:-/tmp}/tars-sessions"
 if [ -d "$TARS_DIR" ]; then
     echo "→ Cleaning temp files..."
@@ -95,5 +100,4 @@ fi
 
 echo ""
 echo "  ✓ Tars Notch fully uninstalled."
-echo "  Settings backup: $BACKUP"
 echo ""

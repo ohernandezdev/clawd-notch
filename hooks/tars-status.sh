@@ -19,19 +19,25 @@ _input_file = os.environ['TARS_INPUT_FILE']
 with open(_input_file) as _f:
     d = json.load(_f)
 os.unlink(_input_file)
-sid = d.get('session_id', 'unknown')
-hook = d.get('hook_event_name', d.get('hook_event', 'unknown'))
+# Support both snake_case (Claude Code) and camelCase (Copilot CLI)
+def g(snake, camel=''):
+    if not camel:
+        camel = ''.join(w.capitalize() if i else w for i, w in enumerate(snake.split('_')))
+    return d.get(snake, d.get(camel, ''))
+
+sid = g('session_id') or 'unknown'
+hook = g('hook_event_name') or g('hook_event') or 'unknown'
 
 if not re.match(r'^[A-Za-z0-9_-]{1,128}$', sid):
     sid = 'invalid'
 sid = os.path.basename(sid)
-tool = d.get('tool_name', '')
-cwd = d.get('cwd', d.get('working_directory', os.getcwd()))
-transcript = d.get('transcript_path', '')
-permission_mode = d.get('permission_mode', '')
-agent_id = d.get('agent_id', '')
-agent_type = d.get('agent_type', '')
-model = d.get('model', '')
+tool = g('tool_name')
+cwd = g('cwd') or g('working_directory') or os.getcwd()
+transcript = g('transcript_path')
+permission_mode = g('permission_mode')
+agent_id = g('agent_id')
+agent_type = g('agent_type')
+model = g('model', 'model')
 
 # --- Read last assistant message from transcript ---
 last_claude_text = ''
@@ -78,7 +84,7 @@ for _pat in _secret_patterns:
 
 # --- Build tool description ---
 desc = ''
-ti = d.get('tool_input', {})
+ti = d.get('tool_input', d.get('toolInput', d.get('tool_args', d.get('toolArgs', {}))))
 if not isinstance(ti, dict):
     ti = {}
 
@@ -165,7 +171,7 @@ elif hook == 'SessionEnd':
     status = 'idle'
     desc = 'Session ended'
 elif hook == 'Stop':
-    lam = d.get('last_assistant_message', '')
+    lam = d.get('last_assistant_message', d.get('lastAssistantMessage', ''))
     if lam:
         lns = [l.strip() for l in lam.split('\n') if l.strip()]
         last_claude_text = lns[-1][:150] if lns else last_claude_text
@@ -181,8 +187,8 @@ elif hook == 'Stop':
         try: os.unlink(tmppath2)
         except: pass
 elif hook == 'Notification':
-    ntype = str(d.get('notification_type', ''))
-    nmsg = d.get('message', '')
+    ntype = str(d.get('notification_type', d.get('notificationType', '')))
+    nmsg = d.get('message', d.get('text', ''))
     nmsg_lower = nmsg.lower()
     if 'waiting' in ntype or 'input' in ntype or 'waiting' in nmsg_lower: status = 'waitingForInput'
     elif 'complete' in ntype or 'done' in ntype or 'complete' in nmsg_lower: status = 'taskCompleted'

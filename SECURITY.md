@@ -1,60 +1,91 @@
-# Security
+# Security & Privacy
 
-## Threat Model
+Tars Notch is a developer tool that reads your AI coding agent's hook events to display session status. Here's the full security picture.
 
-Tars Notch is a **local developer tool**. It runs entirely on your machine with no network access. The threat model focuses on preventing accidental exposure of sensitive information that passes through Claude Code sessions.
+## What it accesses
 
-### What it reads
+| Data | How | Why |
+|------|-----|-----|
+| Hook event JSON | Received via stdin in `tars-status.sh` | Session ID, tool name, working directory |
+| Transcript JSONL | Reads last ~20KB of `transcript_path` | Extracts last assistant message |
+| `$TMPDIR/tars-sessions/` | Reads/writes JSON files | Session state persistence |
+| `localhost:7483` | HTTP server (loopback only) | Instant updates from hooks to app |
+| `~/.claude/settings.json` | Read + safe merge on install | Adds hook entries (backs up first) |
+| `~/.copilot/settings.json` | Read + safe merge on install | Same for Copilot CLI |
 
-- **Hook event JSON** (via stdin): session ID, tool name, working directory, hook event type
-- **Claude Code transcript** (JSONL): reads the last ~20KB to extract the most recent assistant message for status display
-- **Session JSON files**: reads from `$TMPDIR/tars-sessions/` to display session state
+## What it does NOT access
 
-### What it writes
+- No network calls to external servers
+- No Accessibility permissions
+- No screen recording or input monitoring
+- No keychain or credential access
+- No file system access outside `$TMPDIR` and hook paths
+- No Apple Events or automation entitlements
 
-- **Session JSON files**: one per active session in `$TMPDIR/tars-sessions/` (per-user, `chmod 700`)
-- **macOS notifications**: generic text only ("Claude needs input" / "Task completed") — no message content
+## HTTP server
 
-### What it does NOT do
+The app runs a local HTTP server on `localhost:7483` (loopback only — not accessible from the network). It accepts:
 
-- No network calls — the app never contacts any server
-- No analytics or telemetry
-- No data persistence beyond the current session (temp files are cleaned up)
-- No access to other apps or system resources beyond what's listed above
+- `POST /hook` — session state updates from the hook script
+- `POST /permission` — permission approval requests (holds connection until user responds)
+- `GET /health` — health check
 
-## Privacy Controls
+The server binds to `127.0.0.1` only. No TLS (unnecessary for loopback).
 
-- **Privacy mode** (on by default): hides Claude's message content from the panel. Shows only tool names and status.
-- **Generic notifications**: notifications never include message content, project paths, or working directories.
-- **Secret filtering**: the hook script filters common secret patterns (API keys, tokens, JWTs) from displayed text.
+## Permission approval flow
 
-## App Sandbox
+When Claude Code fires a `PermissionRequest` hook:
 
-This app is **not sandboxed**. It runs outside the macOS App Sandbox because it needs to:
+1. Hook script POSTs to `localhost:7483/permission` with tool details
+2. App shows a banner with Allow/Deny buttons and a 5-minute countdown
+3. If user clicks Allow/Deny, the HTTP response is sent back to the hook
+4. Hook outputs the decision to stdout for Claude Code to read
+5. If timeout (5 min), connection closes — Claude Code falls back to its own terminal prompt
 
-1. Read files from `$TMPDIR` written by Claude Code hooks
-2. Execute `osascript` for local macOS notifications
+The hook does NOT auto-approve. If you don't respond, nothing happens.
 
-The app has **Hardened Runtime** enabled, which provides:
-- Library validation
-- Code signing enforcement
-- Runtime protections against code injection
+## Secret filtering
 
-## Session ID Validation
+The hook script filters common secret patterns before writing any text:
 
-Session IDs used as filenames are validated against `^[A-Za-z0-9_-]{1,128}$` and passed through `os.path.basename()` to prevent path traversal.
+- API keys (`sk-*`, `pk-*`, `api_*`)
+- GitHub tokens (`ghp_*`)
+- JWTs (`eyJ*`)
 
-## Atomic File Writes
+If a match is found, the text is replaced with `[redacted]`.
 
-All JSON state files are written atomically (write to temp file, then `os.replace()`) to prevent corrupted reads.
+## Privacy mode
 
-## Reporting Vulnerabilities
+On by default. When enabled:
+- Panel shows only tool names (Bash, Edit, Read), not message content
+- Notifications are generic ("Claude needs input"), not message-specific
 
-If you find a security issue, please open a GitHub issue or email security concerns to the repository owner. This is a developer tool with a small attack surface, but all reports are taken seriously.
+## Safe settings merge
 
-## Limitations
+The installer (both `install.sh` and the app's setup wizard):
 
-- The app is not code-signed with an Apple Developer ID (ad-hoc signed)
-- The app is not notarized by Apple
-- The transcript parser reads raw content — while secrets are filtered, novel secret formats may not be caught
-- Session files in `$TMPDIR` are readable only by the current user, but any process running as that user can read them
+1. Creates a timestamped backup (`settings.json.backup.20260331_151300`)
+2. Reads the existing JSON and parses it
+3. Checks if `tars-status.sh` is already configured (skips if so)
+4. Appends hook entries to existing arrays (never overwrites)
+5. Writes back with pretty-printing
+
+The uninstaller reverses this: backs up, filters out `tars-status.sh` entries, writes back.
+
+## Session data lifecycle
+
+- Session JSON files are created in `$TMPDIR/tars-sessions/` (per-user, `chmod 700`)
+- Files older than 10 minutes without a hook update are auto-deleted
+- `$TMPDIR` is cleared by macOS on reboot
+- No long-term persistence of session data
+
+## Threat model
+
+| Threat | Mitigation |
+|--------|-----------|
+| Another app reads session files | `chmod 700` on directory, per-user `$TMPDIR` |
+| Hook script is modified | User can inspect via setup wizard before install |
+| Settings.json corruption | Timestamped backup before every modification |
+| HTTP server accessed remotely | Bound to `127.0.0.1` only |
+| Sensitive data in panel | Privacy mode on by default, secret filtering |
+| Permission auto-approval | No auto-approve — timeout = no response |
