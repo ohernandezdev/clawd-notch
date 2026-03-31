@@ -2,13 +2,13 @@
 set -e
 
 echo ""
-echo "  🦀 Claw'd Notch Uninstaller"
+echo "  🦀 Tars Notch Uninstaller"
 echo "  ============================"
 echo ""
 echo "  This will:"
 echo "    1. Quit the app (if running)"
-echo "    2. Remove /Applications/ClawdNotch.app"
-echo "    3. Remove ~/.claude/hooks/notchy-status.sh"
+echo "    2. Remove /Applications/TarsNotch.app"
+echo "    3. Remove ~/.claude/hooks/tars-status.sh"
 echo "    4. Remove hook entries from ~/.claude/settings.json"
 echo "    5. Clean up temp files"
 echo ""
@@ -20,24 +20,24 @@ fi
 echo ""
 
 # --- Step 1: Quit app ---
-if pgrep -x "ClawdNotch" >/dev/null 2>&1; then
-    echo "→ Quitting ClawdNotch..."
-    killall ClawdNotch 2>/dev/null || true
+if pgrep -x "TarsNotch" >/dev/null 2>&1; then
+    echo "→ Quitting TarsNotch..."
+    killall TarsNotch 2>/dev/null || true
     sleep 1
     echo "  ✓ App quit"
 fi
 
 # --- Step 2: Remove app ---
-if [ -d "/Applications/ClawdNotch.app" ]; then
-    echo "→ Removing /Applications/ClawdNotch.app..."
-    rm -rf "/Applications/ClawdNotch.app"
+if [ -d "/Applications/TarsNotch.app" ]; then
+    echo "→ Removing /Applications/TarsNotch.app..."
+    rm -rf "/Applications/TarsNotch.app"
     echo "  ✓ App removed"
 else
-    echo "→ /Applications/ClawdNotch.app not found, skipping"
+    echo "→ /Applications/TarsNotch.app not found, skipping"
 fi
 
 # --- Step 3: Remove hook script ---
-HOOK="$HOME/.claude/hooks/notchy-status.sh"
+HOOK="$HOME/.claude/hooks/tars-status.sh"
 if [ -f "$HOOK" ]; then
     echo "→ Removing hook script..."
     rm -f "$HOOK"
@@ -48,7 +48,7 @@ fi
 
 # --- Step 4: Remove hooks from settings.json ---
 SETTINGS="$HOME/.claude/settings.json"
-if [ -f "$SETTINGS" ] && grep -q "notchy-status.sh" "$SETTINGS" 2>/dev/null; then
+if [ -f "$SETTINGS" ] && grep -q "tars-status.sh" "$SETTINGS" 2>/dev/null; then
     echo "→ Removing hook entries from settings.json..."
     # Backup first
     BACKUP="$SETTINGS.backup.$(date +%Y%m%d_%H%M%S)"
@@ -66,7 +66,7 @@ for event in list(hooks.keys()):
     hooks[event] = [
         h for h in hooks[event]
         if not any(
-            'notchy-status.sh' in hook.get('command', '')
+            'tars-status.sh' in hook.get('command', '')
             for hook in h.get('hooks', [])
         )
     ]
@@ -86,14 +86,14 @@ else
 fi
 
 # --- Step 5: Clean temp files ---
-NOTCHY_DIR="${TMPDIR:-/tmp}/notchy-sessions"
-if [ -d "$NOTCHY_DIR" ]; then
+TARS_DIR="${TMPDIR:-/tmp}/tars-sessions"
+if [ -d "$TARS_DIR" ]; then
     echo "→ Cleaning temp files..."
-    rm -rf "$NOTCHY_DIR"
+    rm -rf "$TARS_DIR"
     echo "  ✓ Temp files cleaned"
 fi
 
 echo ""
-echo "  ✓ Claw'd Notch fully uninstalled."
+echo "  ✓ Tars Notch fully uninstalled."
 echo "  Settings backup: $BACKUP"
 echo ""

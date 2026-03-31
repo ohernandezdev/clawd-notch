@@ -4,21 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build
 
-Open `ClawdNotch.xcodeproj` in Xcode and build (Cmd+B). Or from the command line:
+Open `TarsNotch.xcodeproj` in Xcode and build (Cmd+B). Or from the command line:
 
 ```bash
-xcodebuild -project ClawdNotch.xcodeproj -scheme ClawdNotch -configuration Debug build
+xcodebuild -project TarsNotch.xcodeproj -scheme TarsNotch -configuration Debug build
 ```
 
 There are no tests or linting configured yet.
 
 ## Overview
 
-Claw'd Notch is a macOS menu bar app that provides a floating terminal panel anchored to the MacBook notch, with automatic Xcode project detection. When the user hovers over the notch or clicks the menu bar icon, a floating panel appears with embedded terminal sessions (via SwiftTerm) that auto-`cd` into detected Xcode project directories and launch `claude`.
+Tars Notch is a macOS menu bar app that provides a floating terminal panel anchored to the MacBook notch, with automatic Xcode project detection. When the user hovers over the notch or clicks the menu bar icon, a floating panel appears with embedded terminal sessions (via SwiftTerm) that auto-`cd` into detected Xcode project directories and launch `claude`.
 
 ## Architecture
 
-**App lifecycle**: `ClawdNotchApp` uses `@NSApplicationDelegateAdaptor` to delegate to `AppDelegate`, which owns the `NSStatusItem` (menu bar icon), the `TerminalPanel`, and the `NotchWindow`. The SwiftUI `App` body is an empty `Settings` scene — all UI lives in the panel and notch window.
+**App lifecycle**: `TarsNotchApp` uses `@NSApplicationDelegateAdaptor` to delegate to `AppDelegate`, which owns the `NSStatusItem` (menu bar icon), the `TerminalPanel`, and the `NotchWindow`. The SwiftUI `App` body is an empty `Settings` scene — all UI lives in the panel and notch window.
 
 **Notch integration**: `NotchWindow` is an always-visible `NSPanel` positioned over the MacBook notch. It detects notch dimensions via `NSScreen.auxiliaryTopLeftArea`/`auxiliaryTopRightArea`, tracks mouse hover to trigger the main panel, and expands with a bounce animation (via `CVDisplayLinkWrapper`) when any session is working. `NotchPillContent` (SwiftUI) renders status icons (spinner, checkmark, warning) inside the pill. `NotchDisplayState` computes a priority-based aggregate status across all sessions.
 
@@ -32,7 +32,7 @@ Claw'd Notch is a macOS menu bar app that provides a floating terminal panel anc
 
 **Tab bar**: `SessionTabBar` renders tabs with a green/gray dot indicating whether the Xcode project is still open. Tabs support rename (via context menu) and close.
 
-**Checkpoints**: `CheckpointManager` creates git snapshots using custom refs (`refs/Notchy-snapshots/<project>/<timestamp>`). It uses a temporary `GIT_INDEX_FILE` to avoid disturbing the user's staging area. Checkpoints can be created (Cmd+S or menu), listed, and restored.
+**Checkpoints**: `CheckpointManager` creates git snapshots using custom refs (`refs/Tars-snapshots/<project>/<timestamp>`). It uses a temporary `GIT_INDEX_FILE` to avoid disturbing the user's staging area. Checkpoints can be created (Cmd+S or menu), listed, and restored.
 
 **Hover behavior**: `AppDelegate` manages a dual interaction model — notch hover opens the panel with mouse-tracking that auto-hides when the cursor leaves, while status item click opens normally with resign-key hiding. The backtick key (keyCode 50) is a global hotkey to toggle the panel.
 
@@ -42,4 +42,4 @@ Claw'd Notch is a macOS menu bar app that provides a floating terminal panel anc
 
 ## Entitlements
 
-No special entitlements required. Session data is stored in `$TMPDIR/notchy-sessions/` (per-user, chmod 700).
+No special entitlements required. Session data is stored in `$TMPDIR/tars-sessions/` (per-user, chmod 700).

@@ -2,21 +2,21 @@
 set -e
 
 echo ""
-echo "  🦀 Claw'd Notch — DMG Builder"
+echo "  🦀 Tars Notch — DMG Builder"
 echo "  =============================="
 echo ""
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-APP_NAME="ClawdNotch"
-DMG_NAME="Clawd-Notch"
+APP_NAME="TarsNotch"
+DMG_NAME="Tars-Notch"
 BUILD_DIR="$SCRIPT_DIR/build"
 DMG_DIR="$BUILD_DIR/dmg"
 DMG_OUTPUT="$SCRIPT_DIR/$DMG_NAME.dmg"
 
 # --- Step 1: Build Release ---
 echo "→ Building release..."
-xcodebuild -project "$SCRIPT_DIR/ClawdNotch.xcodeproj" \
-    -scheme ClawdNotch \
+xcodebuild -project "$SCRIPT_DIR/TarsNotch.xcodeproj" \
+    -scheme TarsNotch \
     -configuration Release \
     -derivedDataPath "$BUILD_DIR" \
     CODE_SIGN_IDENTITY="-" \
@@ -44,7 +44,7 @@ ln -s /Applications "$DMG_DIR/Applications"
 echo "→ Creating DMG..."
 rm -f "$DMG_OUTPUT"
 hdiutil create \
-    -volname "Claw'd Notch" \
+    -volname "Tars Notch" \
     -srcfolder "$DMG_DIR" \
     -ov \
     -format UDZO \
@@ -60,5 +60,5 @@ rm -rf "$DMG_DIR"
 SIZE=$(du -h "$DMG_OUTPUT" | cut -f1)
 echo ""
 echo "  ✓ $DMG_NAME.dmg ($SIZE)"
-echo "  Users drag ClawdNotch.app → Applications, hooks auto-configure on first launch."
+echo "  Users drag TarsNotch.app → Applications, hooks auto-configure on first launch."
 echo ""

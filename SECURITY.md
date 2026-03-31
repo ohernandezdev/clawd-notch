@@ -2,17 +2,17 @@
 
 ## Threat Model
 
-Claw'd Notch is a **local developer tool**. It runs entirely on your machine with no network access. The threat model focuses on preventing accidental exposure of sensitive information that passes through Claude Code sessions.
+Tars Notch is a **local developer tool**. It runs entirely on your machine with no network access. The threat model focuses on preventing accidental exposure of sensitive information that passes through Claude Code sessions.
 
 ### What it reads
 
 - **Hook event JSON** (via stdin): session ID, tool name, working directory, hook event type
 - **Claude Code transcript** (JSONL): reads the last ~20KB to extract the most recent assistant message for status display
-- **Session JSON files**: reads from `$TMPDIR/notchy-sessions/` to display session state
+- **Session JSON files**: reads from `$TMPDIR/tars-sessions/` to display session state
 
 ### What it writes
 
-- **Session JSON files**: one per active session in `$TMPDIR/notchy-sessions/` (per-user, `chmod 700`)
+- **Session JSON files**: one per active session in `$TMPDIR/tars-sessions/` (per-user, `chmod 700`)
 - **macOS notifications**: generic text only ("Claude needs input" / "Task completed") — no message content
 
 ### What it does NOT do

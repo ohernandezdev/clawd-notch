@@ -1,19 +1,19 @@
 #!/bin/bash
 set -e
 
-# Claw'd Notch installer
+# Tars Notch installer
 # Builds the app, installs the hook, configures Claude Code settings, and launches.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-APP_NAME="ClawdNotch.app"
+APP_NAME="TarsNotch.app"
 
 echo ""
-echo "  🦀 Claw'd Notch Installer"
+echo "  🦀 Tars Notch Installer"
 echo "  ========================="
 echo ""
 echo "  This installer will:"
 echo "    1. Build the app from source (Xcode)"
-echo "    2. Copy ClawdNotch.app to /Applications"
+echo "    2. Copy TarsNotch.app to /Applications"
 echo "    3. Install hook scripts for your AI coding agents"
 echo "    4. Configure hooks in settings files"
 echo "    5. Launch the app"
@@ -58,8 +58,8 @@ if ! xcodebuild -version &>/dev/null; then
     exit 1
 fi
 
-xcodebuild -project "$SCRIPT_DIR/ClawdNotch.xcodeproj" \
-    -scheme ClawdNotch \
+xcodebuild -project "$SCRIPT_DIR/TarsNotch.xcodeproj" \
+    -scheme TarsNotch \
     -configuration Release \
     -derivedDataPath "$SCRIPT_DIR/build" \
     CODE_SIGN_IDENTITY="-" \
@@ -83,10 +83,10 @@ echo "  ✓ Installed to /Applications/$APP_NAME"
 # --- Step 3: Install hooks ---
 
 if [ "$INSTALL_CLAUDE" = true ]; then
-    HOOK_SRC="$SCRIPT_DIR/hooks/notchy-status.sh"
-    HOOK_DST="$HOME/.claude/hooks/notchy-status.sh"
+    HOOK_SRC="$SCRIPT_DIR/hooks/tars-status.sh"
+    HOOK_DST="$HOME/.claude/hooks/tars-status.sh"
     SETTINGS="$HOME/.claude/settings.json"
-    HOOK_CMD="bash ~/.claude/hooks/notchy-status.sh"
+    HOOK_CMD="bash ~/.claude/hooks/tars-status.sh"
 
     echo "→ Installing Claude Code hooks..."
     mkdir -p "$HOME/.claude/hooks"
@@ -100,7 +100,7 @@ if [ "$INSTALL_CLAUDE" = true ]; then
         cp "$SETTINGS" "$BACKUP"
         echo "  ✓ Backed up settings to $BACKUP"
 
-        if grep -q "notchy-status.sh" "$SETTINGS" 2>/dev/null; then
+        if grep -q "tars-status.sh" "$SETTINGS" 2>/dev/null; then
             echo "  ✓ Hooks already configured in settings.json"
         else
             python3 -c "
@@ -133,9 +133,9 @@ with open('$SETTINGS', 'w') as f:
 fi
 
 if [ "$INSTALL_COPILOT" = true ]; then
-    COPILOT_HOOK_SRC="$SCRIPT_DIR/hooks/notchy-status-copilot.sh"
-    COPILOT_HOOK_DST="$HOME/.copilot/hooks/notchy-status-copilot.sh"
-    COPILOT_CONFIG="$HOME/.copilot/hooks/clawd-notch.json"
+    COPILOT_HOOK_SRC="$SCRIPT_DIR/hooks/tars-status-copilot.sh"
+    COPILOT_HOOK_DST="$HOME/.copilot/hooks/tars-status-copilot.sh"
+    COPILOT_CONFIG="$HOME/.copilot/hooks/tars-notch.json"
 
     echo "→ Installing Copilot CLI hooks..."
     mkdir -p "$HOME/.copilot/hooks"
@@ -144,7 +144,7 @@ if [ "$INSTALL_COPILOT" = true ]; then
     echo "  ✓ Hook installed to $COPILOT_HOOK_DST"
 
     echo "→ Configuring Copilot CLI hooks..."
-    if [ -f "$COPILOT_CONFIG" ] && grep -q "notchy-status-copilot" "$COPILOT_CONFIG" 2>/dev/null; then
+    if [ -f "$COPILOT_CONFIG" ] && grep -q "tars-status-copilot" "$COPILOT_CONFIG" 2>/dev/null; then
         echo "  ✓ Hooks already configured in $COPILOT_CONFIG"
     else
         python3 -c "
@@ -155,10 +155,10 @@ if os.path.isfile(config_path):
     with open(config_path) as f:
         config = json.load(f)
 hooks = config.setdefault('hooks', {})
-hook_entry = {'type': 'command', 'bash': 'bash ~/.copilot/hooks/notchy-status-copilot.sh', 'timeoutSec': 3}
+hook_entry = {'type': 'command', 'bash': 'bash ~/.copilot/hooks/tars-status-copilot.sh', 'timeoutSec': 3}
 for event in ['postToolUse', 'sessionEnd']:
     event_hooks = hooks.setdefault(event, [])
-    if not any('notchy-status-copilot' in str(h.get('bash','')) for h in event_hooks):
+    if not any('tars-status-copilot' in str(h.get('bash','')) for h in event_hooks):
         event_hooks.append(hook_entry)
 config['hooks'] = hooks
 with open(config_path, 'w') as f:
@@ -171,12 +171,12 @@ fi
 
 # --- Step 4: Launch ---
 echo ""
-read -rp "→ Launch Claw'd Notch now? [Y/n] " launch
+read -rp "→ Launch Tars Notch now? [Y/n] " launch
 if [[ "$launch" =~ ^[Nn]$ ]]; then
     echo "  ✓ Install complete. Launch manually: open /Applications/$APP_NAME"
 else
     open "/Applications/$APP_NAME"
-    echo "  ✓ Done! Claw'd is in your notch."
+    echo "  ✓ Done! Tars is in your notch."
     echo "  Hover over the notch to see your AI coding sessions."
 fi
 echo ""
