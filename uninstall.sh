@@ -19,21 +19,23 @@ fi
 echo ""
 
 # --- Step 1: Quit app ---
-if pgrep -x "TarsNotch" >/dev/null 2>&1; then
-    echo "→ Quitting TarsNotch..."
-    killall TarsNotch 2>/dev/null || true
-    sleep 1
-    echo "  ✓ App quit"
-fi
+for proc in TarsNotch ClawdNotch; do
+    if pgrep -x "$proc" >/dev/null 2>&1; then
+        echo "→ Quitting $proc..."
+        killall "$proc" 2>/dev/null || true
+        sleep 1
+        echo "  ✓ $proc quit"
+    fi
+done
 
-# --- Step 2: Remove app ---
-if [ -d "/Applications/TarsNotch.app" ]; then
-    echo "→ Removing /Applications/TarsNotch.app..."
-    rm -rf "/Applications/TarsNotch.app"
-    echo "  ✓ App removed"
-else
-    echo "→ /Applications/TarsNotch.app not found, skipping"
-fi
+# --- Step 2: Remove app (current + legacy branding) ---
+for app in TarsNotch ClawdNotch; do
+    if [ -d "/Applications/$app.app" ]; then
+        echo "→ Removing /Applications/$app.app..."
+        rm -rf "/Applications/$app.app"
+        echo "  ✓ $app.app removed"
+    fi
+done
 
 # --- Step 3: Remove hooks from both providers ---
 remove_hooks() {
@@ -44,14 +46,14 @@ remove_hooks() {
 
     echo "→ Removing $PROVIDER hooks..."
 
-    # Remove hook script
-    if [ -f "$HOOK" ]; then
-        rm -f "$HOOK"
-        echo "  ✓ Hook script removed"
-    fi
+    # Remove hook scripts (current + legacy)
+    for script in tars-status.sh notchy-status.sh; do
+        [ -f "$CONFIG_DIR/hooks/$script" ] && rm -f "$CONFIG_DIR/hooks/$script"
+    done
+    echo "  ✓ Hook scripts removed"
 
     # Remove hook entries from settings.json (safe: backup + filter)
-    if [ -f "$SETTINGS" ] && grep -q "tars-status.sh" "$SETTINGS" 2>/dev/null; then
+    if [ -f "$SETTINGS" ] && grep -qE "tars-status|notchy-status" "$SETTINGS" 2>/dev/null; then
         BACKUP="$SETTINGS.backup.$(date +%Y%m%d_%H%M%S)"
         cp "$SETTINGS" "$BACKUP"
         echo "  ✓ Backed up to $BACKUP"
@@ -67,7 +69,7 @@ for event in list(hooks.keys()):
     hooks[event] = [
         h for h in hooks[event]
         if not any(
-            'tars-status.sh' in str(hook.get('command', ''))
+            'tars-status' in str(hook.get('command', '')) or 'notchy-status' in str(hook.get('command', ''))
             for hook in h.get('hooks', [])
         )
     ]
@@ -89,19 +91,20 @@ PYEOF
 
 remove_hooks "Claude Code" "$HOME/.claude"
 
-# Copilot CLI uses a separate JSON file, not settings.json
+# Copilot CLI hooks (current + legacy)
 echo "→ Removing Copilot CLI hooks..."
-rm -f "$HOME/.copilot/hooks/tars-status.sh"
-rm -f "$HOME/.copilot/hooks/tars-notch.json"
+for f in tars-status.sh tars-status-copilot.py tars-status-copilot.sh tars-notch.json notchy-status-copilot.py notchy-status-copilot.sh; do
+    rm -f "$HOME/.copilot/hooks/$f"
+done
 echo "  ✓ Copilot CLI hooks removed"
 
 # --- Step 4: Clean temp files ---
-TARS_DIR="${TMPDIR:-/tmp}/tars-sessions"
-if [ -d "$TARS_DIR" ]; then
-    echo "→ Cleaning temp files..."
-    rm -rf "$TARS_DIR"
-    echo "  ✓ Temp files cleaned"
-fi
+# Clean temp files (current + legacy)
+for dir in tars-sessions notchy-sessions; do
+    SESS_DIR="${TMPDIR:-/tmp}/$dir"
+    [ -d "$SESS_DIR" ] && rm -rf "$SESS_DIR"
+done
+echo "  ✓ Temp files cleaned"
 
 echo ""
 echo "  ✓ Tars Notch fully uninstalled."
