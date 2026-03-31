@@ -26,7 +26,25 @@ def g(snake, camel=''):
     return d.get(snake, d.get(camel, ''))
 
 sid = g('session_id') or 'unknown'
-hook = g('hook_event_name') or g('hook_event') or 'unknown'
+hook = g('hook_event_name') or g('hook_event') or ''
+
+# Copilot CLI doesn't send hook_event_name — infer from fields
+if not hook:
+    if d.get('toolName') or d.get('tool_name'):
+        if d.get('toolResult') or d.get('tool_response'):
+            hook = 'PostToolUse'
+        else:
+            hook = 'PreToolUse'
+    elif d.get('prompt'):
+        hook = 'UserPromptSubmit'  # works for both UserPromptSubmit and userPromptSubmitted
+    elif d.get('message') or d.get('notification_type') or d.get('notificationType'):
+        hook = 'Notification'
+    elif d.get('last_assistant_message') or d.get('lastAssistantMessage'):
+        hook = 'Stop'
+    elif d.get('error'):
+        hook = 'errorOccurred'
+    else:
+        hook = 'PostToolUse'  # default assumption
 
 if not re.match(r'^[A-Za-z0-9_-]{1,128}$', sid):
     sid = 'invalid'
@@ -71,6 +89,16 @@ if transcript and os.path.isfile(transcript):
     except:
         pass
 
+# --- Copilot: extract message from toolResult if no transcript ---
+if not last_claude_text:
+    tr = d.get('toolResult', d.get('tool_response', {}))
+    if isinstance(tr, dict):
+        txt = tr.get('textResultForLlm', tr.get('text', ''))
+        if txt and isinstance(txt, str):
+            lines = [l.strip() for l in txt.split('\n') if l.strip()]
+            if lines:
+                last_claude_text = lines[-1][:120]
+
 # --- Secrets filter ---
 _secret_patterns = [
     r'(?:sk|pk|api|key|token|secret|password|bearer)[_-]?[A-Za-z0-9]{20,}',
@@ -83,6 +111,18 @@ for _pat in _secret_patterns:
         break
 
 # --- Build tool description ---
+# Map Copilot tool names to standard names
+copilot_tool_map = {
+    'view': 'Read', 'read_file': 'Read', 'list_directory': 'Read',
+    'edit': 'Edit', 'multi_edit': 'MultiEdit', 'write': 'Write',
+    'shell': 'Bash', 'run_command': 'Bash', 'bash': 'Bash',
+    'search': 'Grep', 'grep': 'Grep', 'glob': 'Glob', 'find_files': 'Glob',
+    'report_intent': 'Thinking', 'think': 'Thinking',
+    'web_search': 'WebSearch', 'web_fetch': 'WebFetch',
+    'agent': 'Agent', 'ask_user': 'AskUserQuestion',
+}
+tool = copilot_tool_map.get(tool, tool) if tool else tool
+
 desc = ''
 ti = d.get('tool_input', d.get('toolInput', d.get('tool_args', d.get('toolArgs', {}))))
 if not isinstance(ti, dict):
@@ -113,10 +153,16 @@ elif tool == 'SendMessage': desc = 'Messaging agent'
 elif tool == 'AskUserQuestion': desc = 'Asking user'
 elif tool == 'ToolSearch': desc = 'Loading tools'
 elif tool in ('EnterPlanMode', 'ExitPlanMode'): desc = 'Planning'
+elif tool in ('report_intent', 'ReportIntent', 'SyntheticOutput', 'Brief'): desc = 'Thinking'
 elif tool: desc = tool
 
 # --- Status ---
-status = 'working'
+# Default to working, but keep previous status if this event has no useful info
+if tool or hook in ('UserPromptSubmit', 'userPromptSubmitted', 'Stop', 'SessionEnd', 'SessionStart', 'Notification', 'PermissionRequest', 'errorOccurred'):
+    status = 'working'
+else:
+    status = prev_data.get('status', 'working')
+
 desc_lower = (last_claude_text or desc).lower()
 if 'waiting for your input' in desc_lower or 'waiting for input' in desc_lower:
     status = 'waitingForInput'
@@ -168,8 +214,15 @@ if hook == 'SessionStart':
     desc = 'Session ' + d.get('source', '')
     tool_history = []
 elif hook == 'SessionEnd':
-    status = 'idle'
-    desc = 'Session ended'
+    reason = d.get('reason', d.get('Reason', ''))
+    # Copilot sends SessionEnd when waiting for input, not when actually closing
+    if reason in ('clear', 'resume', 'logout', 'prompt_input_exit', 'other'):
+        status = 'idle'
+        desc = 'Session ended'
+    else:
+        # Likely Copilot "done with turn" — treat as waiting
+        status = 'waitingForInput'
+        desc = prev_data.get('last_message', '') or 'Your turn'
 elif hook == 'Stop':
     lam = d.get('last_assistant_message', d.get('lastAssistantMessage', ''))
     if lam:
@@ -212,6 +265,11 @@ elif hook == 'SubagentStop':
 elif hook == 'PermissionRequest':
     status = 'waitingForInput'
     desc = 'Permission: ' + tool
+elif hook == 'errorOccurred':
+    status = 'waitingForInput'
+    err = d.get('error', '')
+    desc = 'Error: ' + str(err)[:60] if err else 'Error occurred'
+    last_claude_text = desc
 
 # --- Tool history ---
 if hook in ('PostToolUse', 'PostToolUseFailure') and tool:

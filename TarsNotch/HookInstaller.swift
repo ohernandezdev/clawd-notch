@@ -303,8 +303,9 @@ class HookInstaller {
         let events = [
             "postToolUse", "notification", "stop",
             "sessionStart", "sessionEnd",
-            "userPromptSubmit",
-            "subagentStart", "subagentStop"
+            "userPromptSubmitted",
+            "subagentStart", "subagentStop",
+            "errorOccurred"
         ]
         for event in events {
             var eventHooks = hooks[event] as? [[String: Any]] ?? []
