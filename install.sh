@@ -1,22 +1,24 @@
 #!/bin/bash
 set -e
 
-# Claw'd Notch installer
-# Builds the app, installs the hook, configures Claude Code settings, and launches.
+# Tars Notch installer
+# Builds the app, installs the hook, configures settings, and launches.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-APP_NAME="ClawdNotch.app"
+APP_NAME="TarsNotch.app"
+HOOK_FILE="tars-status.sh"
+EVENTS='["PostToolUse","Notification","Stop","SessionStart","SessionEnd","UserPromptSubmit","SubagentStart","SubagentStop"]'
+PERM_EVENT="PermissionRequest"
 
 echo ""
-echo "  🦀 Claw'd Notch Installer"
+echo "  Tars Notch Installer"
 echo "  ========================="
 echo ""
 echo "  This installer will:"
 echo "    1. Build the app from source (Xcode)"
-echo "    2. Copy ClawdNotch.app to /Applications"
-echo "    3. Install hook scripts for your AI coding agents"
-echo "    4. Configure hooks in settings files"
-echo "    5. Launch the app"
+echo "    2. Copy TarsNotch.app to /Applications"
+echo "    3. Install hook script + configure settings"
+echo "    4. Launch the app"
 echo ""
 echo "  Which AI coding agents do you use?"
 echo "    [1] Claude Code only"
@@ -35,6 +37,18 @@ case "$provider_choice" in
 esac
 
 echo ""
+echo "  Will do:"
+echo "    - Build TarsNotch.app from source"
+echo "    - Install to /Applications"
+if [ "$INSTALL_CLAUDE" = true ]; then
+echo "    - Install hook to ~/.claude/hooks/tars-status.sh"
+echo "    - Add 9 hook events to ~/.claude/settings.json (backup first)"
+fi
+if [ "$INSTALL_COPILOT" = true ]; then
+echo "    - Install hook scripts to ~/.copilot/hooks/"
+echo "    - Add hook events to ~/.copilot/settings.json (backup first)"
+fi
+echo ""
 read -rp "  Continue? [y/N] " confirm
 if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
     echo "  Aborted."
@@ -50,7 +64,6 @@ if ! command -v xcodebuild &>/dev/null; then
     exit 1
 fi
 
-# Full Xcode is required (not just Command Line Tools)
 if ! xcodebuild -version &>/dev/null; then
     echo "  ✗ Full Xcode installation required (Command Line Tools alone won't work)."
     echo "    Install Xcode from the App Store, then run:"
@@ -58,15 +71,15 @@ if ! xcodebuild -version &>/dev/null; then
     exit 1
 fi
 
-xcodebuild -project "$SCRIPT_DIR/ClawdNotch.xcodeproj" \
-    -scheme ClawdNotch \
+xcodebuild -project "$SCRIPT_DIR/TarsNotch.xcodeproj" \
+    -scheme TarsNotch \
     -configuration Release \
     -derivedDataPath "$SCRIPT_DIR/build" \
     CODE_SIGN_IDENTITY="-" \
     -quiet
 
 if [ ! -d "$SCRIPT_DIR/build/Build/Products/Release/$APP_NAME" ]; then
-    echo "  ✗ Build failed — $APP_NAME not found. Check xcodebuild output above."
+    echo "  ✗ Build failed — $APP_NAME not found."
     exit 1
 fi
 
@@ -74,109 +87,112 @@ echo "  ✓ Built successfully"
 
 # --- Step 2: Install app ---
 echo "→ Installing to /Applications..."
-if [ -d "/Applications/$APP_NAME" ]; then
-    rm -rf "/Applications/$APP_NAME"
-fi
+[ -d "/Applications/$APP_NAME" ] && rm -rf "/Applications/$APP_NAME"
 cp -r "$SCRIPT_DIR/build/Build/Products/Release/$APP_NAME" "/Applications/$APP_NAME"
 echo "  ✓ Installed to /Applications/$APP_NAME"
 
-# --- Step 3: Install hooks ---
+# --- Step 3: Install hooks (safe merge into existing settings) ---
 
-if [ "$INSTALL_CLAUDE" = true ]; then
-    HOOK_SRC="$SCRIPT_DIR/hooks/notchy-status.sh"
-    HOOK_DST="$HOME/.claude/hooks/notchy-status.sh"
-    SETTINGS="$HOME/.claude/settings.json"
-    HOOK_CMD="bash ~/.claude/hooks/notchy-status.sh"
+install_hooks() {
+    local PROVIDER="$1"       # "Claude Code" or "Copilot CLI"
+    local CONFIG_DIR="$2"     # ~/.claude or ~/.copilot
+    local HOOK_SCRIPT="${3:-$HOOK_FILE}"  # optional: override hook filename
+    local HOOK_DIR="$CONFIG_DIR/hooks"
+    local SETTINGS="$CONFIG_DIR/settings.json"
+    local HOOK_CMD="bash $HOOK_DIR/$HOOK_SCRIPT"
 
-    echo "→ Installing Claude Code hooks..."
-    mkdir -p "$HOME/.claude/hooks"
-    cp "$HOOK_SRC" "$HOOK_DST"
-    chmod +x "$HOOK_DST"
-    echo "  ✓ Hook installed to $HOOK_DST"
+    echo "→ Installing $PROVIDER hooks..."
+    mkdir -p "$HOOK_DIR"
+    cp "$SCRIPT_DIR/hooks/$HOOK_SCRIPT" "$HOOK_DIR/$HOOK_SCRIPT"
+    chmod +x "$HOOK_DIR/$HOOK_SCRIPT"
+    echo "  ✓ Hook installed to $HOOK_DIR/$HOOK_SCRIPT"
 
-    echo "→ Configuring Claude Code settings..."
+    echo "→ Configuring $PROVIDER settings..."
+
+    # Backup existing settings
     if [ -f "$SETTINGS" ]; then
         BACKUP="$SETTINGS.backup.$(date +%Y%m%d_%H%M%S)"
         cp "$SETTINGS" "$BACKUP"
-        echo "  ✓ Backed up settings to $BACKUP"
+        echo "  ✓ Backed up to $BACKUP"
 
-        if grep -q "notchy-status.sh" "$SETTINGS" 2>/dev/null; then
-            echo "  ✓ Hooks already configured in settings.json"
-        else
-            python3 -c "
-import json
-with open('$SETTINGS') as f:
-    settings = json.load(f)
-hooks = settings.setdefault('hooks', {})
-hook_entry = {'matcher': '', 'hooks': [{'type': 'command', 'command': '$HOOK_CMD', 'timeout': 3}]}
-for event in ['PostToolUse', 'Notification', 'Stop']:
-    event_hooks = hooks.setdefault(event, [])
-    event_hooks.append(hook_entry)
-with open('$SETTINGS', 'w') as f:
-    json.dump(settings, f, indent=2)
-    f.write('\n')
-"
-            echo "  ✓ Hooks added to $SETTINGS"
+        if grep -q "tars-status" "$SETTINGS" 2>/dev/null; then
+            echo "  ✓ Hooks already configured"
+            return
         fi
-    else
-        mkdir -p "$HOME/.claude"
-        python3 -c "
-import json
-hook_entry = {'matcher': '', 'hooks': [{'type': 'command', 'command': '$HOOK_CMD', 'timeout': 3}]}
-settings = {'hooks': {'PostToolUse': [hook_entry], 'Notification': [hook_entry], 'Stop': [hook_entry]}}
-with open('$SETTINGS', 'w') as f:
+    fi
+
+    # Safe merge: read existing JSON, append our hooks, write back
+    python3 << PYEOF
+import json, os
+
+settings_path = "$SETTINGS"
+hook_cmd = "$HOOK_CMD"
+
+# Read existing or create new
+settings = {}
+if os.path.isfile(settings_path):
+    try:
+        with open(settings_path) as f:
+            settings = json.load(f)
+    except:
+        pass
+
+hooks = settings.setdefault('hooks', {})
+
+# Standard events (timeout 3s)
+standard_entry = {'matcher': '', 'hooks': [{'type': 'command', 'command': hook_cmd, 'timeout': 3}]}
+for event in $EVENTS:
+    event_hooks = hooks.setdefault(event, [])
+    # Don't duplicate
+    already = any(
+        any('tars-status' in str(h.get('command', '')) for h in entry.get('hooks', []))
+        for entry in event_hooks if isinstance(entry, dict)
+    )
+    if not already:
+        event_hooks.append(standard_entry)
+
+# PermissionRequest (timeout 300s for user approval)
+perm_entry = {'matcher': '', 'hooks': [{'type': 'command', 'command': hook_cmd, 'timeout': 300}]}
+perm_hooks = hooks.setdefault('$PERM_EVENT', [])
+already_perm = any(
+    any('tars-status' in str(h.get('command', '')) for h in entry.get('hooks', []))
+    for entry in perm_hooks if isinstance(entry, dict)
+)
+if not already_perm:
+    perm_hooks.append(perm_entry)
+
+settings['hooks'] = hooks
+
+with open(settings_path, 'w') as f:
     json.dump(settings, f, indent=2)
     f.write('\n')
-"
-        echo "  ✓ Created $SETTINGS with hooks"
-    fi
-fi
+PYEOF
+
+    echo "  ✓ Hooks added to $SETTINGS"
+}
+
+[ "$INSTALL_CLAUDE" = true ] && install_hooks "Claude Code" "$HOME/.claude"
 
 if [ "$INSTALL_COPILOT" = true ]; then
-    COPILOT_HOOK_SRC="$SCRIPT_DIR/hooks/notchy-status-copilot.sh"
-    COPILOT_HOOK_DST="$HOME/.copilot/hooks/notchy-status-copilot.sh"
-    COPILOT_CONFIG="$HOME/.copilot/hooks/clawd-notch.json"
-
     echo "→ Installing Copilot CLI hooks..."
     mkdir -p "$HOME/.copilot/hooks"
-    cp "$COPILOT_HOOK_SRC" "$COPILOT_HOOK_DST"
-    chmod +x "$COPILOT_HOOK_DST"
-    echo "  ✓ Hook installed to $COPILOT_HOOK_DST"
+    cp "$SCRIPT_DIR/hooks/tars-status-copilot.py" "$HOME/.copilot/hooks/tars-status-copilot.py"
+    cp "$SCRIPT_DIR/hooks/tars-status-copilot.sh" "$HOME/.copilot/hooks/tars-status-copilot.sh"
+    chmod +x "$HOME/.copilot/hooks/tars-status-copilot.py" "$HOME/.copilot/hooks/tars-status-copilot.sh"
+    echo "  ✓ Hook scripts installed to ~/.copilot/hooks/"
 
-    echo "→ Configuring Copilot CLI hooks..."
-    if [ -f "$COPILOT_CONFIG" ] && grep -q "notchy-status-copilot" "$COPILOT_CONFIG" 2>/dev/null; then
-        echo "  ✓ Hooks already configured in $COPILOT_CONFIG"
-    else
-        python3 -c "
-import json, os
-config_path = '$COPILOT_CONFIG'
-config = {'version': 1, 'hooks': {}}
-if os.path.isfile(config_path):
-    with open(config_path) as f:
-        config = json.load(f)
-hooks = config.setdefault('hooks', {})
-hook_entry = {'type': 'command', 'bash': 'bash ~/.copilot/hooks/notchy-status-copilot.sh', 'timeoutSec': 3}
-for event in ['postToolUse', 'sessionEnd']:
-    event_hooks = hooks.setdefault(event, [])
-    if not any('notchy-status-copilot' in str(h.get('bash','')) for h in event_hooks):
-        event_hooks.append(hook_entry)
-config['hooks'] = hooks
-with open(config_path, 'w') as f:
-    json.dump(config, f, indent=2)
-    f.write('\n')
-"
-        echo "  ✓ Created $COPILOT_CONFIG"
-    fi
+    # Configure in settings.json (same format as Claude Code)
+    install_hooks "Copilot CLI" "$HOME/.copilot" "tars-status-copilot.sh"
 fi
 
 # --- Step 4: Launch ---
 echo ""
-read -rp "→ Launch Claw'd Notch now? [Y/n] " launch
+read -rp "→ Launch Tars Notch now? [Y/n] " launch
 if [[ "$launch" =~ ^[Nn]$ ]]; then
     echo "  ✓ Install complete. Launch manually: open /Applications/$APP_NAME"
 else
     open "/Applications/$APP_NAME"
-    echo "  ✓ Done! Claw'd is in your notch."
+    echo "  ✓ Done! Tars is in your notch."
     echo "  Hover over the notch to see your AI coding sessions."
 fi
 echo ""

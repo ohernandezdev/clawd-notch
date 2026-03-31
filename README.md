@@ -1,4 +1,4 @@
-# Claw'd Notch
+# Tars Notch
 
 **Your MacBook notch knows what your AI coding agent is doing.**
 
@@ -10,7 +10,7 @@ A macOS app that turns your MacBook's notch into a live dashboard for your AI co
 ![Copilot CLI](https://img.shields.io/badge/Copilot%20CLI-hooks-blue)
 
 <p align="center">
-  <img src="assets/demo.gif?v=2" alt="Claw'd Notch demo" width="700">
+  <img src="assets/tars-v2-screenshot-1.png" alt="Tars Notch — 5 sessions running" width="700">
 </p>
 
 ## The problem
@@ -19,122 +19,97 @@ You're running 4 Claude Code sessions across different projects. One finishes an
 
 ## The fix
 
-Claw'd lives in your notch. Hover to see everything:
+Tars lives in your notch. Hover to see everything:
 
-- **What each session is doing** — tool name + status, updated in real-time
+- **What each session is doing** — tool name + last message, updated in real-time via HTTP (no polling)
 - **Which ones need you** — "Your turn" when Claude is waiting for input
-- **How long ago** — timestamps per session
-- **Color-coded** — each project gets a unique color bar
+- **Approve permissions from the panel** — no need to switch to the terminal
+- **Model + mode** — see which model each session runs and if it's in bypass mode
+- **Active subagents** — know when agents are running in parallel
 - **Push notifications** — "Claude needs input" / "Task completed" (toggleable)
 
 ### The notch
 
 <p align="center">
-  <img src="assets/notch-closeup.png?v=2" alt="Claw'd mascot in the MacBook notch" width="500">
+  <img src="assets/tars-v2-screenshot-2.png" alt="Tars Notch panel with privacy mode" width="700">
 </p>
 
-### Claw'd states
+Tarsbot (the pixel art robot) lives in the left side of the notch. The right side shows the current tool icon + a badge with the number of sessions waiting for your input.
 
-| Claw'd color | Meaning |
-|:---:|:---|
-| 🟠 Orange | Claude is working |
-| 🔵 Blue | Claude finished — your turn |
-| 🟢 Green | Task completed |
-| ⚫ Gray | No active sessions / idle |
-
-### Notch tool icons
-
-The icon next to Claw'd shows exactly what Claude is doing:
-
-| Icon | Tool | Description |
-|:---:|:---|:---|
-| `terminal` | Bash | Running shell commands |
-| `pencil` | Edit / MultiEdit | Editing files |
-| `doc.badge.plus` | Write | Creating new files |
-| `eye` | Read | Reading files |
-| `magnifyingglass` | Grep | Searching file contents |
-| `folder` | Glob | Finding files by pattern |
-| `person.2` | Agent | Running subagents |
-| `globe` | WebSearch | Searching the web |
-| `arrow.down.doc` | WebFetch | Fetching web content |
-| `checklist` | Task | Managing tasks |
-| `sparkles` | Other | Any other tool |
-
-The icon persists after the task ends (dimmed in gray) so you always see the last thing Claude did.
-
-### Panel session statuses
+### Session statuses
 
 | Status | Color | Meaning |
 |:---:|:---|:---|
-| `Your turn` | Blue | Claude is waiting for your input |
-| `Bash` / `Edit` / etc. | Yellow | Claude is actively using that tool |
-| `Thinking...` | Orange | Working for >60s without a tool call |
-| `Done!` | Green | Task just completed |
-| `Sleeping` | Gray | Session interrupted |
-| `Idle` | Dark gray | No activity |
+| `Your turn` | Cyan | Claude is waiting for your input |
+| `Bash` / `Edit` / `Read` / etc. | Orange | Claude is actively using that tool |
+| `Thinking...` | Yellow | Working for >60s without a tool call |
+| `Done` | Green | Task just completed |
+| `Paused` | Yellow | Session interrupted |
+| `Idle` | Gray | No activity |
+
+### Permission approvals
+
+When Claude needs permission to run a tool, a banner appears in the panel with:
+- The tool name and command details
+- A countdown progress bar (5 minutes)
+- **Allow** / **Deny** buttons
+
+https://github.com/user-attachments/assets/demo-permissions.mov
+
+If you don't respond in 5 minutes, the banner disappears and Claude Code shows its own permission prompt in the terminal.
+
+### Privacy mode
+
+Toggle privacy mode from the menu bar. When on, only tool names are shown (no message content).
+
+https://github.com/user-attachments/assets/demo-privacy.mov
 
 ### Menu bar options
 
+<p align="center">
+  <img src="assets/tars-screenshot-1.png" alt="Tars Notch menu bar" width="400">
+</p>
+
 | Option | Default | Description |
 |:---|:---:|:---|
-| Privacy Mode | ON | Hides Claude's message content from the panel. Shows only tool names |
+| Privacy Mode | ON | Hides Claude's message content from the panel |
 | Push Notifications | ON | macOS notifications when Claude needs input or completes a task |
-| Quit Claw'd Notch | — | Exits the app |
+| Launch at Login | OFF | Start Tars Notch when you log in |
+| Quit Tars Notch | — | Exits the app |
 
 ## Supported agents
 
 | Agent | Hook System | Config Location |
 |:---|:---|:---|
 | **Claude Code** | [Native hooks](https://docs.anthropic.com/en/docs/claude-code/hooks) | `~/.claude/settings.json` |
-| **GitHub Copilot CLI** | [CLI hooks](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-hooks) | `~/.copilot/hooks/` |
+| **GitHub Copilot CLI** | Same format (fork of Claude Code) | `~/.copilot/settings.json` |
 
-The setup wizard lets you choose which agents to install hooks for. You can enable both.
+The setup wizard lets you choose which agents to install hooks for. Both use the same hook script.
 
 ## How it works
 
-Uses each agent's native hooks system. No Accessibility permissions required, no automation entitlements — just local temp files and native macOS notifications:
-
-```mermaid
-flowchart LR
-    subgraph cc["Claude Code Sessions"]
-        S1["Session 1\n(project-a)"]
-        S2["Session 2\n(project-b)"]
-        S3["Session 3\n(project-c)"]
-    end
-
-    subgraph hooks["Hook Events"]
-        H1(PostToolUse)
-        H2(Stop)
-        H3(Notification)
-    end
-
-    subgraph fs["$TMPDIR/notchy-sessions/"]
-        F1["session1.json"]
-        F2["session2.json"]
-        F3["session3.json"]
-    end
-
-    subgraph app["Claw'd Notch"]
-        Poll["SessionStore\n(polls every 2s)"]
-        Notch["NotchWindow\n🦀 + tool icon"]
-        Panel["Floating Panel\nall sessions"]
-        Notif["Native macOS\nNotification"]
-    end
-
-    S1 & S2 & S3 -->|"stdin JSON"| H1 & H2 & H3
-    H1 & H2 & H3 -->|"notchy-status.sh\n(python3)"| F1 & F2 & F3
-    F1 & F2 & F3 -->|"read"| Poll
-    Poll --> Notch
-    Poll --> Panel
-    Poll -->|"status change"| Notif
+```
+Claude Code / Copilot CLI
+    │
+    ├─ PostToolUse ──┐
+    ├─ Stop ─────────┤
+    ├─ Notification ─┤
+    ├─ SessionStart ─┤
+    ├─ SessionEnd ───┤
+    ├─ UserPrompt ───┤    HTTP POST              Tars Notch
+    ├─ SubagentStart ┼──► localhost:7483/hook ──► SessionStore ──► Panel + Notch
+    ├─ SubagentStop ─┤    (instant)               │
+    ├─ PermissionReq ┤                            ├──► Notifications
+    │                │    File fallback            │
+    │                └──► $TMPDIR/tars-sessions/   └──► Permission approve/deny
+    │                     (polled every 2s)
 ```
 
-Each hook event fires the same script (`notchy-status.sh`) which:
-1. Reads the hook JSON from stdin (session ID, tool name, working directory)
-2. Parses the transcript JSONL for the last assistant message
-3. Writes a status JSON to `$TMPDIR/notchy-sessions/{session_id}.json` (per-user, `chmod 700`)
-
-The app polls those files every 2 seconds and sends native macOS notifications on status transitions.
+The hook script (`tars-status.sh`) runs on every Claude Code event:
+1. Receives hook JSON on stdin (session ID, tool name, working directory, etc.)
+2. Reads the last assistant message from the transcript
+3. **POST**s to `localhost:7483` for instant updates (the app runs a local HTTP server)
+4. Also writes a JSON file as fallback if the app isn't running
 
 Works with any terminal: Warp, iTerm, Terminal.app, VS Code, tmux, SSH.
 
@@ -142,26 +117,26 @@ Works with any terminal: Warp, iTerm, Terminal.app, VS Code, tmux, SSH.
 
 ### Download (recommended)
 
-1. Download **[Clawd-Notch.dmg](https://github.com/ohernandezdev/clawd-notch/releases/latest/download/Clawd-Notch.dmg)**
-2. Open the DMG, double-click `ClawdNotch.app`
-3. It auto-moves to `/Applications` and configures Claude Code hooks
+1. Download **[Tars-Notch.dmg](https://github.com/ohernandezdev/tars-notch/releases/latest/download/Tars-Notch.dmg)**
+2. Open the DMG, drag `TarsNotch.app` to Applications
+3. Launch — it auto-configures hooks on first run
 4. You can inspect the hook script and settings changes before accepting
 
 ### Build from source
 
 ```bash
-git clone https://github.com/ohernandezdev/clawd-notch.git
-cd clawd-notch
+git clone https://github.com/ohernandezdev/tars-notch.git
+cd tars-notch
 bash install.sh
 ```
 
 The install script will:
-1. Show you exactly what it's going to do
-2. Build the app from source
-3. Copy it to `/Applications`
-4. Back up your `~/.claude/settings.json`
-5. Install the hook script to `~/.claude/hooks/`
-6. Add hooks to your Claude Code settings (merges with existing config)
+1. Ask which agents you use (Claude Code / Copilot CLI / Both)
+2. Show you exactly what it will do
+3. Build the app from source
+4. Copy it to `/Applications`
+5. Install the hook script
+6. Add hooks to your settings (backs up first, merges with existing config)
 7. Launch the app
 
 ### Manual install
@@ -169,20 +144,18 @@ The install script will:
 **1. Build the app**
 
 ```bash
-git clone https://github.com/ohernandezdev/clawd-notch.git
-cd clawd-notch
-xcodebuild -project ClawdNotch.xcodeproj -scheme ClawdNotch -configuration Release -derivedDataPath build CODE_SIGN_IDENTITY="-"
-cp -r build/Build/Products/Release/ClawdNotch.app /Applications/
+git clone https://github.com/ohernandezdev/tars-notch.git
+cd tars-notch
+xcodebuild -project TarsNotch.xcodeproj -scheme TarsNotch -configuration Release -derivedDataPath build CODE_SIGN_IDENTITY="-"
+cp -r build/Build/Products/Release/TarsNotch.app /Applications/
 ```
-
-Or open `ClawdNotch.xcodeproj` in Xcode and hit Cmd+R.
 
 **2. Install the hook**
 
 ```bash
 mkdir -p ~/.claude/hooks
-cp hooks/notchy-status.sh ~/.claude/hooks/notchy-status.sh
-chmod +x ~/.claude/hooks/notchy-status.sh
+cp hooks/tars-status.sh ~/.claude/hooks/tars-status.sh
+chmod +x ~/.claude/hooks/tars-status.sh
 ```
 
 **3. Add to Claude Code settings**
@@ -192,24 +165,15 @@ Add these hooks to `~/.claude/settings.json`:
 ```json
 {
   "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "",
-        "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/notchy-status.sh", "timeout": 3 }]
-      }
-    ],
-    "Notification": [
-      {
-        "matcher": "",
-        "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/notchy-status.sh", "timeout": 3 }]
-      }
-    ],
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/notchy-status.sh", "timeout": 3 }]
-      }
-    ]
+    "PostToolUse": [{ "matcher": "", "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/tars-status.sh", "timeout": 3 }] }],
+    "Notification": [{ "matcher": "", "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/tars-status.sh", "timeout": 3 }] }],
+    "Stop": [{ "matcher": "", "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/tars-status.sh", "timeout": 3 }] }],
+    "SessionStart": [{ "matcher": "", "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/tars-status.sh", "timeout": 3 }] }],
+    "SessionEnd": [{ "matcher": "", "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/tars-status.sh", "timeout": 3 }] }],
+    "UserPromptSubmit": [{ "matcher": "", "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/tars-status.sh", "timeout": 3 }] }],
+    "SubagentStart": [{ "matcher": "", "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/tars-status.sh", "timeout": 3 }] }],
+    "SubagentStop": [{ "matcher": "", "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/tars-status.sh", "timeout": 3 }] }],
+    "PermissionRequest": [{ "matcher": "", "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/tars-status.sh", "timeout": 300 }] }]
   }
 }
 ```
@@ -219,26 +183,23 @@ Add these hooks to `~/.claude/settings.json`:
 **4. Launch**
 
 ```bash
-open /Applications/ClawdNotch.app
+open /Applications/TarsNotch.app
 ```
 
 ## Requirements
 
 - macOS 15.0+ (notch recommended, works on any Mac via menu bar)
-- Claude Code CLI
-- Xcode Command Line Tools (for building from source)
+- Claude Code CLI or GitHub Copilot CLI
+- Xcode (for building from source)
 
 ## Security & Privacy
 
-- **Developer tool, not sandboxed** — runs outside the App Sandbox to read Claude Code's temp files. No App Store distribution.
-- **No network calls** — the app never contacts any server. All data stays on your machine.
-- **Local-only storage** — session state in `$TMPDIR/notchy-sessions/` (per-user, `chmod 700`). Nothing persisted long-term.
-- **What it reads**: hook event JSON from stdin (session ID, tool name, working directory) and the last ~20KB of the Claude Code transcript.
-- **What it writes**: one JSON file per session in `$TMPDIR/notchy-sessions/`.
-- **Notifications** are generic ("Claude needs input" / "Task completed") — no message content is ever shown in notifications.
+- **No network calls** — the app never contacts any server. The HTTP server runs on `localhost:7483` only.
+- **Local-only storage** — session state in `$TMPDIR/tars-sessions/` (per-user, `chmod 700`).
 - **Privacy Mode** (on by default) hides Claude's message content from the panel.
-- **Secret filtering** — the hook filters common secret patterns (API keys, tokens, JWTs) from any displayed text.
-- The install script backs up your `~/.claude/settings.json` before modifying it.
+- **Secret filtering** — the hook filters common secret patterns (API keys, tokens, JWTs).
+- **Safe settings merge** — the installer backs up your settings before modifying and only appends hooks.
+- **Notifications** are generic ("Claude needs input") — no message content is ever shown in notifications.
 
 See [SECURITY.md](SECURITY.md) for the full threat model.
 
@@ -248,15 +209,15 @@ See [SECURITY.md](SECURITY.md) for the full threat model.
 bash uninstall.sh
 ```
 
-This will quit the app, remove it from `/Applications`, clean up hooks from `~/.claude/settings.json` (with backup), and delete temp files.
+Removes the app, hooks from both Claude Code and Copilot CLI (with backup), and temp files.
 
 ## Credits
 
-- **[Notchy](https://github.com/adamlyttleapps/notchy)** by Adam Lyttle — the original MacBook notch app. This is a fork.
+- **[Notchy](https://github.com/adamlyttleapps/notchy)** by Adam Lyttle — the original MacBook notch app
 - **[SwiftTerm](https://github.com/migueldeicaza/SwiftTerm)** by Miguel de Icaza — terminal emulator
-- **[Claw'd](https://www.starkinsider.com/2025/10/clawd-ai-retro-mascot-command-line.html)** — the Claude Code crab mascot by Anthropic
+- **Tarsbot** — pixel art robot mascot inspired by TARS from Interstellar
 - Built with [Claude Code](https://claude.ai/code)
 
 ## License
 
-[MIT](LICENSE) — Original work copyright Adam Lyttle. Claude Code integration copyright Omar Hernandez.
+[MIT](LICENSE) — Original work copyright Adam Lyttle. AI agent integration copyright Omar Hernandez.
