@@ -45,8 +45,8 @@ echo "    - Install hook to ~/.claude/hooks/tars-status.sh"
 echo "    - Add 9 hook events to ~/.claude/settings.json (backup first)"
 fi
 if [ "$INSTALL_COPILOT" = true ]; then
-echo "    - Install hook to ~/.copilot/hooks/tars-status.sh"
-echo "    - Create ~/.copilot/hooks/tars-notch.json with 8 hook events"
+echo "    - Install hook scripts to ~/.copilot/hooks/"
+echo "    - Add hook events to ~/.copilot/settings.json (backup first)"
 fi
 echo ""
 read -rp "  Continue? [y/N] " confirm
@@ -96,15 +96,16 @@ echo "  ✓ Installed to /Applications/$APP_NAME"
 install_hooks() {
     local PROVIDER="$1"       # "Claude Code" or "Copilot CLI"
     local CONFIG_DIR="$2"     # ~/.claude or ~/.copilot
+    local HOOK_SCRIPT="${3:-$HOOK_FILE}"  # optional: override hook filename
     local HOOK_DIR="$CONFIG_DIR/hooks"
     local SETTINGS="$CONFIG_DIR/settings.json"
-    local HOOK_CMD="bash $HOOK_DIR/$HOOK_FILE"
+    local HOOK_CMD="bash $HOOK_DIR/$HOOK_SCRIPT"
 
     echo "→ Installing $PROVIDER hooks..."
     mkdir -p "$HOOK_DIR"
-    cp "$SCRIPT_DIR/hooks/$HOOK_FILE" "$HOOK_DIR/$HOOK_FILE"
-    chmod +x "$HOOK_DIR/$HOOK_FILE"
-    echo "  ✓ Hook installed to $HOOK_DIR/$HOOK_FILE"
+    cp "$SCRIPT_DIR/hooks/$HOOK_SCRIPT" "$HOOK_DIR/$HOOK_SCRIPT"
+    chmod +x "$HOOK_DIR/$HOOK_SCRIPT"
+    echo "  ✓ Hook installed to $HOOK_DIR/$HOOK_SCRIPT"
 
     echo "→ Configuring $PROVIDER settings..."
 
@@ -114,7 +115,7 @@ install_hooks() {
         cp "$SETTINGS" "$BACKUP"
         echo "  ✓ Backed up to $BACKUP"
 
-        if grep -q "tars-status.sh" "$SETTINGS" 2>/dev/null; then
+        if grep -q "tars-status" "$SETTINGS" 2>/dev/null; then
             echo "  ✓ Hooks already configured"
             return
         fi
@@ -144,7 +145,7 @@ for event in $EVENTS:
     event_hooks = hooks.setdefault(event, [])
     # Don't duplicate
     already = any(
-        any('tars-status.sh' in str(h.get('command', '')) for h in entry.get('hooks', []))
+        any('tars-status' in str(h.get('command', '')) for h in entry.get('hooks', []))
         for entry in event_hooks if isinstance(entry, dict)
     )
     if not already:
@@ -154,7 +155,7 @@ for event in $EVENTS:
 perm_entry = {'matcher': '', 'hooks': [{'type': 'command', 'command': hook_cmd, 'timeout': 300}]}
 perm_hooks = hooks.setdefault('$PERM_EVENT', [])
 already_perm = any(
-    any('tars-status.sh' in str(h.get('command', '')) for h in entry.get('hooks', []))
+    any('tars-status' in str(h.get('command', '')) for h in entry.get('hooks', []))
     for entry in perm_hooks if isinstance(entry, dict)
 )
 if not already_perm:
@@ -175,38 +176,13 @@ PYEOF
 if [ "$INSTALL_COPILOT" = true ]; then
     echo "→ Installing Copilot CLI hooks..."
     mkdir -p "$HOME/.copilot/hooks"
-    cp "$SCRIPT_DIR/hooks/$HOOK_FILE" "$HOME/.copilot/hooks/$HOOK_FILE"
-    chmod +x "$HOME/.copilot/hooks/$HOOK_FILE"
-    echo "  ✓ Hook installed to ~/.copilot/hooks/$HOOK_FILE"
+    cp "$SCRIPT_DIR/hooks/tars-status-copilot.py" "$HOME/.copilot/hooks/tars-status-copilot.py"
+    cp "$SCRIPT_DIR/hooks/tars-status-copilot.sh" "$HOME/.copilot/hooks/tars-status-copilot.sh"
+    chmod +x "$HOME/.copilot/hooks/tars-status-copilot.py" "$HOME/.copilot/hooks/tars-status-copilot.sh"
+    echo "  ✓ Hook scripts installed to ~/.copilot/hooks/"
 
-    COPILOT_CONFIG="$HOME/.copilot/hooks/tars-notch.json"
-    echo "→ Configuring Copilot CLI hooks..."
-    if [ -f "$COPILOT_CONFIG" ] && grep -q "tars-status.sh" "$COPILOT_CONFIG" 2>/dev/null; then
-        echo "  ✓ Hooks already configured"
-    else
-        # Copilot uses camelCase events + "bash"/"timeoutSec" in hooks/*.json
-        python3 << PYEOF
-import json, os
-config_path = "$COPILOT_CONFIG"
-config = {"version": 1, "hooks": {}}
-if os.path.isfile(config_path):
-    try:
-        with open(config_path) as f:
-            config = json.load(f)
-    except: pass
-hooks = config.setdefault("hooks", {})
-hook_entry = {"type": "command", "bash": "bash ~/.copilot/hooks/$HOOK_FILE", "timeoutSec": 3}
-for event in ["postToolUse", "notification", "stop", "sessionStart", "sessionEnd", "userPromptSubmit", "subagentStart", "subagentStop"]:
-    event_hooks = hooks.setdefault(event, [])
-    if not any("tars-status.sh" in str(h.get("bash", "")) for h in event_hooks):
-        event_hooks.append(hook_entry)
-config["hooks"] = hooks
-with open(config_path, "w") as f:
-    json.dump(config, f, indent=2)
-    f.write("\n")
-PYEOF
-        echo "  ✓ Created $COPILOT_CONFIG"
-    fi
+    # Configure in settings.json (same format as Claude Code)
+    install_hooks "Copilot CLI" "$HOME/.copilot" "tars-status-copilot.sh"
 fi
 
 # --- Step 4: Launch ---

@@ -104,9 +104,7 @@ if not last_claude_text:
                         break
                 if not last_claude_text and lines:
                     last_claude_text = lines[0][:120]
-    # If still empty, use desc (tool description)
-    if not last_claude_text and desc:
-        last_claude_text = desc
+    # desc defined later, skip for now
 
 # --- Secrets filter ---
 _secret_patterns = [
