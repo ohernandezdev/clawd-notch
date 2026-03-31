@@ -54,7 +54,9 @@ When Claude needs permission to run a tool, a banner appears in the panel with:
 - A countdown progress bar (5 minutes)
 - **Allow** / **Deny** buttons
 
-https://github.com/user-attachments/assets/demo-permissions.mov
+<p align="center">
+  <img src="assets/demo-permissions.gif" alt="Permission approval demo" width="700">
+</p>
 
 If you don't respond in 5 minutes, the banner disappears and Claude Code shows its own permission prompt in the terminal.
 
@@ -62,13 +64,11 @@ If you don't respond in 5 minutes, the banner disappears and Claude Code shows i
 
 Toggle privacy mode from the menu bar. When on, only tool names are shown (no message content).
 
-https://github.com/user-attachments/assets/demo-privacy.mov
+<p align="center">
+  <img src="assets/demo-privacy.gif" alt="Privacy mode demo" width="700">
+</p>
 
 ### Menu bar options
-
-<p align="center">
-  <img src="assets/tars-screenshot-1.png" alt="Tars Notch menu bar" width="400">
-</p>
 
 | Option | Default | Description |
 |:---|:---:|:---|
@@ -82,9 +82,9 @@ https://github.com/user-attachments/assets/demo-privacy.mov
 | Agent | Hook System | Config Location |
 |:---|:---|:---|
 | **Claude Code** | [Native hooks](https://docs.anthropic.com/en/docs/claude-code/hooks) | `~/.claude/settings.json` |
-| **GitHub Copilot CLI** | Same format (fork of Claude Code) | `~/.copilot/settings.json` |
+| **GitHub Copilot CLI** | [Hook files](https://docs.github.com/en/copilot/customizing-copilot/extending-copilot-coding-agent-with-mcp#using-hooks) | `~/.copilot/hooks/tars-notch.json` |
 
-The setup wizard lets you choose which agents to install hooks for. Both use the same hook script.
+The setup wizard lets you choose which agents to install hooks for. Copilot uses a dedicated Python hook (`tars-status-copilot.py`) with proper event mapping.
 
 ## How it works
 
