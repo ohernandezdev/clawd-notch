@@ -253,7 +253,7 @@ struct SessionRow: View {
 
                     Text(" · \(timeAgo)")
                         .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(Self.draculaComment)
+                        .foregroundColor(Self.draculaComment.opacity(0.8))
 
                     Spacer()
 
@@ -268,13 +268,13 @@ struct SessionRow: View {
                     if !session.lastToolName.isEmpty {
                         Text(session.lastToolName)
                             .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(Self.draculaComment)
+                            .foregroundColor(Self.draculaFg.opacity(0.4))
                             .lineLimit(1)
                     }
                 } else if !session.lastMessage.isEmpty {
                     Text(session.lastMessage)
                         .font(.system(size: 10))
-                        .foregroundColor(Self.draculaComment.opacity(0.8))
+                        .foregroundColor(Self.draculaFg.opacity(0.45))
                         .lineLimit(2)
                         .truncationMode(.tail)
                 }
@@ -299,9 +299,9 @@ struct SessionRow: View {
                                 .foregroundColor(Self.draculaCyan.opacity(0.5))
                         }
                         if !session.permissionMode.isEmpty && session.permissionMode != "default" {
-                            Text(session.permissionMode)
+                            Text("▸▸ \(session.permissionMode)")
                                 .font(.system(size: 9, design: .monospaced))
-                                .foregroundColor(Self.draculaPink.opacity(0.5))
+                                .foregroundColor(Color(red: 1.0, green: 0.45, blue: 0.55))
                         }
                         Spacer()
                     }

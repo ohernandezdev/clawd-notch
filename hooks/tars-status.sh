@@ -7,13 +7,18 @@ mkdir -p "$TARS_DIR"
 chmod 700 "$TARS_DIR"
 
 INPUT=$(cat)
+export TARS_INPUT_FILE=$(mktemp "${TARS_DIR}/.input.XXXXXX")
+echo "$INPUT" > "$TARS_INPUT_FILE"
 
-echo "$INPUT" | python3 -c "
+python3 << 'PYEOF'
 import sys, json, os, time, re, tempfile
 from urllib.request import urlopen, Request
 from urllib.error import URLError
 
-d = json.load(sys.stdin)
+_input_file = os.environ['TARS_INPUT_FILE']
+with open(_input_file) as _f:
+    d = json.load(_f)
+os.unlink(_input_file)
 sid = d.get('session_id', 'unknown')
 hook = d.get('hook_event_name', d.get('hook_event', 'unknown'))
 
@@ -286,4 +291,4 @@ try:
 except:
     try: os.unlink(tmppath)
     except: pass
-" 2>/dev/null
+PYEOF
