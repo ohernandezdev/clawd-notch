@@ -67,6 +67,39 @@ Example settings.json structure:
 }
 ```
 
+## Manual Copilot CLI hook setup
+
+### 1. Copy the hook scripts
+
+```bash
+mkdir -p ~/.copilot/hooks
+cp hooks/tars-status-copilot.py ~/.copilot/hooks/tars-status-copilot.py
+cp hooks/tars-status-copilot.sh ~/.copilot/hooks/tars-status-copilot.sh
+chmod +x ~/.copilot/hooks/tars-status-copilot.py ~/.copilot/hooks/tars-status-copilot.sh
+```
+
+### 2. Create the hook config file
+
+Copilot CLI reads hook configs from individual JSON files in `~/.copilot/hooks/` (not from `settings.json`). Create `~/.copilot/hooks/tars-notch.json`:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [{ "matcher": "", "hooks": [{ "type": "command", "command": "bash ~/.copilot/hooks/tars-status-copilot.sh", "timeout": 3 }] }],
+    "Notification": [{ "matcher": "", "hooks": [{ "type": "command", "command": "bash ~/.copilot/hooks/tars-status-copilot.sh", "timeout": 3 }] }],
+    "Stop": [{ "matcher": "", "hooks": [{ "type": "command", "command": "bash ~/.copilot/hooks/tars-status-copilot.sh", "timeout": 3 }] }],
+    "SessionStart": [{ "matcher": "", "hooks": [{ "type": "command", "command": "bash ~/.copilot/hooks/tars-status-copilot.sh", "timeout": 3 }] }],
+    "SessionEnd": [{ "matcher": "", "hooks": [{ "type": "command", "command": "bash ~/.copilot/hooks/tars-status-copilot.sh", "timeout": 3 }] }],
+    "UserPromptSubmit": [{ "matcher": "", "hooks": [{ "type": "command", "command": "bash ~/.copilot/hooks/tars-status-copilot.sh", "timeout": 3 }] }],
+    "SubagentStart": [{ "matcher": "", "hooks": [{ "type": "command", "command": "bash ~/.copilot/hooks/tars-status-copilot.sh", "timeout": 3 }] }],
+    "SubagentStop": [{ "matcher": "", "hooks": [{ "type": "command", "command": "bash ~/.copilot/hooks/tars-status-copilot.sh", "timeout": 3 }] }],
+    "PermissionRequest": [{ "matcher": "", "hooks": [{ "type": "command", "command": "bash ~/.copilot/hooks/tars-status-copilot.sh", "timeout": 300 }] }]
+  }
+}
+```
+
+Restart your Copilot CLI session after creating this file.
+
 ## Build from source
 
 ```bash

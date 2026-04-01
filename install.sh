@@ -46,7 +46,7 @@ echo "    - Add 9 hook events to ~/.claude/settings.json (backup first)"
 fi
 if [ "$INSTALL_COPILOT" = true ]; then
 echo "    - Install hook scripts to ~/.copilot/hooks/"
-echo "    - Add hook events to ~/.copilot/settings.json (backup first)"
+echo "    - Create hook config at ~/.copilot/hooks/tars-notch.json"
 fi
 echo ""
 read -rp "  Continue? [y/N] " confirm
@@ -181,8 +181,33 @@ if [ "$INSTALL_COPILOT" = true ]; then
     chmod +x "$HOME/.copilot/hooks/tars-status-copilot.py" "$HOME/.copilot/hooks/tars-status-copilot.sh"
     echo "  ✓ Hook scripts installed to ~/.copilot/hooks/"
 
-    # Configure in settings.json (same format as Claude Code)
-    install_hooks "Copilot CLI" "$HOME/.copilot" "tars-status-copilot.sh"
+    # Copilot CLI reads hook configs from individual JSON files in ~/.copilot/hooks/
+    # (not from settings.json like Claude Code)
+    COPILOT_HOOK_JSON="$HOME/.copilot/hooks/tars-notch.json"
+    COPILOT_HOOK_CMD="bash $HOME/.copilot/hooks/tars-status-copilot.sh"
+
+    if [ -f "$COPILOT_HOOK_JSON" ] && grep -q "tars-status" "$COPILOT_HOOK_JSON" 2>/dev/null; then
+        echo "  ✓ Hook config already exists at $COPILOT_HOOK_JSON"
+    else
+        python3 << PYEOF
+import json
+
+hook_cmd = "$COPILOT_HOOK_CMD"
+config = {"hooks": {}}
+
+standard_entry = {"matcher": "", "hooks": [{"type": "command", "command": hook_cmd, "timeout": 3}]}
+for event in $EVENTS:
+    config["hooks"][event] = [standard_entry]
+
+perm_entry = {"matcher": "", "hooks": [{"type": "command", "command": hook_cmd, "timeout": 300}]}
+config["hooks"]["$PERM_EVENT"] = [perm_entry]
+
+with open("$COPILOT_HOOK_JSON", "w") as f:
+    json.dump(config, f, indent=2)
+    f.write("\n")
+PYEOF
+        echo "  ✓ Hook config created at $COPILOT_HOOK_JSON"
+    fi
 fi
 
 # --- Step 4: Launch ---
